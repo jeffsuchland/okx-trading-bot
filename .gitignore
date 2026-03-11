@@ -1,0 +1,50 @@
+# Environment
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+venv/
+.venv/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.cache/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Data
+data/trade_log.json
+data/backups/
+
+# Ralph temp files
+groups.json
+partial_*.json
+init_progress.txt

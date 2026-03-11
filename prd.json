@@ -1,0 +1,415 @@
+{
+  "project_meta": {
+    "name": "okx-trading-bot",
+    "version": "0.1.0",
+    "ralph_type": "windsurf",
+    "description": "OKX Automated Alpha-Seeker Bot - Production-ready crypto trading bot with safety-first architecture, modular strategies, and real-time dashboard."
+  },
+  "backlog": [
+    {
+      "group": "Exchange-Integration",
+      "feature": "Setup basic project structure and repository scaffolding",
+      "description": "Initialize the Python project with src/ directory structure, requirements.txt, .env.example, .gitignore, and README.md. Create the React frontend scaffold with Vite + Tailwind CSS. Establish the monorepo layout: backend/ for Python, frontend/ for React.",
+      "acceptance_criteria": [
+        "backend/ directory exists with src/__init__.py and main entry point - verify by running 'python -c \"import src\"' from backend/",
+        "frontend/ directory exists with Vite + React + Tailwind scaffolded - verify by running 'npm run build' from frontend/",
+        "requirements.txt lists python-okx, fastapi, uvicorn, python-dotenv, websockets, pytest, pytest-cov, ruff - verify file exists and contains packages",
+        ".env.example exists with placeholder keys (OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE) - verify file exists",
+        ".gitignore excludes .env, __pycache__, node_modules, dist/ - verify file exists with entries",
+        "README.md with project overview and setup instructions - verify file exists"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Exchange-Integration",
+      "feature": "OKX API client wrapper with authentication",
+      "description": "Create a Python module src/exchange/okx_client.py that wraps the python-okx SDK. Loads API credentials from .env via python-dotenv. Exposes authenticated methods for account info, market data, and order placement. Includes connection health check (ping/heartbeat).",
+      "acceptance_criteria": [
+        "OkxClient class loads OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE from .env - verify with unit test using mocked env vars",
+        "get_account_balance() returns parsed USDT balance - verify with pytest mock of OKX API response",
+        "get_ticker(symbol) returns bid/ask/last price for a given instrument - verify with pytest mock",
+        "place_order(symbol, side, size, price) submits a limit order and returns order ID - verify with pytest mock",
+        "health_check() returns True when API is reachable - verify with pytest mock",
+        "All API errors raise custom OkxApiError exception with status code and message - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Exchange-Integration",
+      "feature": "WebSocket market data stream",
+      "description": "Create src/exchange/ws_stream.py that establishes a WebSocket connection to OKX public channels. Subscribe to ticker and candlestick (kline) data for configurable trading pairs. Implement auto-reconnect logic on disconnect. Emit parsed data events to an async queue for downstream consumption.",
+      "acceptance_criteria": [
+        "WsStream class connects to OKX public WebSocket endpoint - verify with pytest using mocked WebSocket",
+        "subscribe(channel, instrument_id) subscribes to ticker or candle channels - verify with pytest mock",
+        "Incoming messages are parsed from JSON and placed on an asyncio.Queue - verify with pytest",
+        "Auto-reconnect triggers after connection drop with exponential backoff (max 30s) - verify with pytest simulating disconnect",
+        "unsubscribe() and close() cleanly shut down the connection - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Exchange-Integration",
+      "feature": "Order management service",
+      "description": "Create src/exchange/order_manager.py that provides high-level order lifecycle management. Supports placing, canceling, and querying orders. Tracks open orders in memory. Implements the 'Panic Button' logic: cancel_all_orders() cancels every open order and optionally market-sells all positions to USDT.",
+      "acceptance_criteria": [
+        "OrderManager.place_limit_order(symbol, side, qty, price) delegates to OkxClient and tracks the order - verify with pytest",
+        "OrderManager.cancel_order(order_id) cancels a specific order via OkxClient - verify with pytest",
+        "OrderManager.get_open_orders() returns list of currently tracked open orders - verify with pytest",
+        "OrderManager.cancel_all_orders() cancels all open orders in one call - verify with pytest",
+        "OrderManager.panic_flatten() cancels all orders AND market-sells all non-USDT positions - verify with pytest",
+        "Rate limiting: orders are throttled to respect OKX API rate limits (max 60 req/2s for trade endpoints) - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Exchange-Integration",
+      "feature": "Account balance synchronization",
+      "description": "Create src/exchange/balance_sync.py that periodically polls the OKX account API to sync balances. Maintains an in-memory snapshot of all asset balances. Exposes get_usdt_balance(), get_total_equity(), and get_positions() for use by risk management and UI layers.",
+      "acceptance_criteria": [
+        "BalanceSync class polls account balance on a configurable interval (default 5s) - verify with pytest using mocked API",
+        "get_usdt_balance() returns current available USDT - verify with pytest",
+        "get_total_equity() returns total account equity in USDT terms - verify with pytest",
+        "get_positions() returns list of open positions with size, entry price, unrealized PnL - verify with pytest",
+        "Emits balance_updated event when snapshot changes - verify with pytest",
+        "Handles API errors gracefully without crashing the sync loop - verify with pytest simulating API failure"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Trading-Engine",
+      "feature": "Base strategy abstract class and strategy registry",
+      "description": "Create src/strategies/base_strategy.py defining an abstract BaseStrategy class with methods: analyze(market_data), generate_signal(), and execute(). Create src/strategies/registry.py that allows registering and switching between strategies at runtime via a string name lookup.",
+      "acceptance_criteria": [
+        "BaseStrategy is an ABC with abstract methods analyze(), generate_signal(), execute() - verify with pytest that instantiating it directly raises TypeError",
+        "StrategyRegistry.register(name, strategy_class) stores a strategy class - verify with pytest",
+        "StrategyRegistry.get(name) returns the registered strategy class - verify with pytest",
+        "StrategyRegistry.list_strategies() returns all registered strategy names - verify with pytest",
+        "Strategy classes receive a config dict on __init__ for tunable parameters - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Trading-Engine",
+      "feature": "RSI/MACD mean-reversion strategy",
+      "description": "Implement src/strategies/mean_reversion.py extending BaseStrategy. Computes RSI (configurable period, default 14) and MACD (12/26/9) from candlestick data. Generates BUY signal when RSI < oversold threshold AND MACD histogram crosses above zero. Generates SELL signal on inverse conditions. All thresholds configurable.",
+      "acceptance_criteria": [
+        "MeanReversionStrategy extends BaseStrategy - verify with pytest isinstance check",
+        "calculate_rsi(prices, period) returns correct RSI values - verify with pytest against known dataset",
+        "calculate_macd(prices) returns MACD line, signal line, histogram - verify with pytest against known dataset",
+        "generate_signal() returns BUY when RSI < oversold AND MACD histogram crosses up - verify with pytest",
+        "generate_signal() returns SELL when RSI > overbought AND MACD histogram crosses down - verify with pytest",
+        "generate_signal() returns HOLD when conditions are not met - verify with pytest",
+        "All thresholds (rsi_period, oversold, overbought, macd_fast, macd_slow, macd_signal) are configurable via config dict - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Trading-Engine",
+      "feature": "Grid trading strategy",
+      "description": "Implement src/strategies/grid_trading.py extending BaseStrategy. Places a grid of limit buy and sell orders around the current price at configurable intervals. Supports configurable grid density (number of levels), spacing (percentage between levels), and order size. Rebalances grid when price moves outside the grid range.",
+      "acceptance_criteria": [
+        "GridTradingStrategy extends BaseStrategy - verify with pytest isinstance check",
+        "calculate_grid_levels(current_price, num_levels, spacing_pct) returns arrays of buy and sell price levels - verify with pytest",
+        "generate_signal() returns list of grid orders to place (side, price, qty) - verify with pytest",
+        "Grid rebalances when price moves beyond the outermost level - verify with pytest",
+        "Configurable parameters: num_levels (default 5), spacing_pct (default 0.5%), order_size_usdt - verify with pytest",
+        "Does not place duplicate orders at existing price levels - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Trading-Engine",
+      "feature": "Trading engine main loop",
+      "description": "Create src/engine/trading_loop.py that runs the main async trading loop. Consumes market data from the WebSocket queue, feeds it to the active strategy, and executes generated signals through the OrderManager. Runs on a configurable tick interval. Supports start/stop/pause controls.",
+      "acceptance_criteria": [
+        "TradingLoop class accepts a strategy instance, order_manager, and ws_stream - verify with pytest",
+        "start() begins the async loop consuming from the market data queue - verify with pytest using mocked dependencies",
+        "Each tick calls strategy.analyze() then strategy.generate_signal() then order_manager to execute - verify with pytest",
+        "stop() gracefully halts the loop - verify with pytest",
+        "pause() and resume() toggle signal execution without stopping data consumption - verify with pytest",
+        "Configurable tick_interval_seconds (default 5) - verify with pytest",
+        "Errors in a single tick are logged but do not crash the loop - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Trading-Engine",
+      "feature": "Trade history and PnL tracker",
+      "description": "Create src/engine/pnl_tracker.py that records every executed trade (fills) and computes running PnL metrics. Tracks daily PnL, cumulative PnL, win/loss count, and win rate. Persists trade log to a local JSON file for recovery across restarts.",
+      "acceptance_criteria": [
+        "PnlTracker.record_trade(trade_info) stores trade with timestamp, symbol, side, qty, price, fee - verify with pytest",
+        "get_daily_pnl() returns PnL for the current UTC day - verify with pytest",
+        "get_cumulative_pnl() returns total PnL since inception - verify with pytest",
+        "get_win_loss_ratio() returns wins, losses, and win_rate percentage - verify with pytest",
+        "Trade log is persisted to data/trade_log.json and loaded on startup - verify with pytest using temp file",
+        "get_recent_trades(n) returns last N trades - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Risk-Management",
+      "feature": "Position sizing engine",
+      "description": "Create src/risk/position_sizer.py that calculates the correct order quantity for each trade based on user-defined spend-per-trade (e.g., $10 USDT) and maximum total exposure. Ensures no single trade exceeds the configured limit and total open exposure never exceeds the cap.",
+      "acceptance_criteria": [
+        "PositionSizer.__init__(spend_per_trade, max_total_exposure) stores configurable limits - verify with pytest",
+        "calculate_qty(price, current_exposure) returns the quantity to buy given spend_per_trade and current price - verify with pytest",
+        "calculate_qty returns 0 when adding this trade would exceed max_total_exposure - verify with pytest",
+        "update_exposure(trade_info) adjusts the tracked current exposure after a fill - verify with pytest",
+        "get_current_exposure() returns the total USDT value currently at risk - verify with pytest",
+        "Parameters are hot-reloadable via update_config(spend_per_trade, max_total_exposure) - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Risk-Management",
+      "feature": "Stop-loss automation",
+      "description": "Create src/risk/stop_loss.py that attaches stop-loss logic to every open position. Supports configurable stop-loss percentage (default 2%). When a position's unrealized loss hits the threshold, automatically submits a market sell order via OrderManager. Supports both fixed percentage and trailing stop modes.",
+      "acceptance_criteria": [
+        "StopLossManager.__init__(default_pct, mode='fixed') configures stop-loss behavior - verify with pytest",
+        "check_positions(positions) evaluates each position against its stop-loss level - verify with pytest",
+        "Triggers market sell when unrealized loss exceeds stop_loss_pct - verify with pytest with mocked OrderManager",
+        "Trailing stop mode updates the stop price upward as position profits increase - verify with pytest",
+        "get_stop_levels() returns current stop prices for all tracked positions - verify with pytest",
+        "Does not trigger on positions already being closed - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Risk-Management",
+      "feature": "Max drawdown circuit breaker",
+      "description": "Create src/risk/circuit_breaker.py that monitors account equity and halts all trading when the drawdown from peak equity exceeds a configurable threshold (default 5%). Once triggered, cancels all open orders, stops the trading loop, and logs the event. Requires manual reset via the dashboard.",
+      "acceptance_criteria": [
+        "CircuitBreaker.__init__(max_drawdown_pct) stores the threshold - verify with pytest",
+        "update(current_equity) tracks peak equity and calculates drawdown - verify with pytest",
+        "is_triggered() returns True when drawdown exceeds threshold - verify with pytest",
+        "When triggered, calls OrderManager.cancel_all_orders() and TradingLoop.stop() - verify with pytest using mocks",
+        "Logs the circuit breaker event with timestamp, peak equity, current equity, drawdown pct - verify with pytest",
+        "reset() clears the triggered state and resets peak equity to current - verify with pytest",
+        "get_status() returns current drawdown percentage and triggered state - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Risk-Management",
+      "feature": "Daily loss limit guard",
+      "description": "Create src/risk/daily_limit.py that tracks the cumulative realized loss for the current UTC day. If daily losses exceed a configurable limit (e.g., $50 USDT), it pauses the trading loop until the next UTC day. Integrates with PnlTracker for realized PnL data.",
+      "acceptance_criteria": [
+        "DailyLimitGuard.__init__(max_daily_loss_usdt) stores the daily limit - verify with pytest",
+        "check(daily_pnl) returns True (safe) when daily loss is within limit - verify with pytest",
+        "check() returns False (halt) when daily loss exceeds limit - verify with pytest",
+        "When halted, calls TradingLoop.pause() - verify with pytest using mock",
+        "Automatically resets at UTC midnight - verify with pytest with mocked datetime",
+        "get_status() returns daily_loss, limit, and is_halted flag - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Risk-Management",
+      "feature": "Risk manager orchestrator",
+      "description": "Create src/risk/risk_manager.py that orchestrates all risk components (PositionSizer, StopLossManager, CircuitBreaker, DailyLimitGuard). Called by the TradingLoop before and after every trade execution. Provides a single pre_trade_check() and post_trade_update() interface.",
+      "acceptance_criteria": [
+        "RiskManager.__init__() instantiates all risk sub-components from a unified config dict - verify with pytest",
+        "pre_trade_check(signal) returns (approved, reason) - runs position sizing, daily limit, circuit breaker checks - verify with pytest",
+        "post_trade_update(trade_result) updates exposure, PnL, and triggers stop-loss checks - verify with pytest",
+        "get_risk_status() returns a dict summarizing all risk component states for the dashboard - verify with pytest",
+        "update_config(new_config) hot-reloads all risk parameters without restart - verify with pytest",
+        "Panic mode: panic() delegates to OrderManager.panic_flatten() and halts all components - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Dashboard-UI",
+      "feature": "FastAPI backend REST API for dashboard",
+      "description": "Create backend/src/api/routes.py with FastAPI endpoints that expose bot state to the frontend. Endpoints: GET /api/status (bot running/paused/stopped), GET /api/balance, GET /api/pnl, GET /api/positions, GET /api/config, PUT /api/config, POST /api/panic, POST /api/start, POST /api/stop. Enable CORS for local frontend dev.",
+      "acceptance_criteria": [
+        "GET /api/status returns {status, uptime, active_strategy, heartbeat_ts} - verify with pytest + httpx TestClient",
+        "GET /api/balance returns {usdt_available, total_equity, positions} - verify with pytest",
+        "GET /api/pnl returns {daily_pnl, cumulative_pnl, win_rate, recent_trades} - verify with pytest",
+        "GET /api/config returns current strategy and risk config - verify with pytest",
+        "PUT /api/config accepts updated config and hot-reloads parameters - verify with pytest",
+        "POST /api/panic triggers RiskManager.panic() and returns confirmation - verify with pytest",
+        "POST /api/start and POST /api/stop control the TradingLoop - verify with pytest",
+        "CORS middleware allows requests from http://localhost:5173 - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Dashboard-UI",
+      "feature": "React dashboard layout and navigation shell",
+      "description": "Create the main React app shell in frontend/src/ with a sidebar navigation, top status bar, and main content area. Use Tailwind CSS for styling. Pages: Dashboard (home), Settings, Trade Log. Status bar shows bot status indicator (green/yellow/red) and USDT balance.",
+      "acceptance_criteria": [
+        "App renders with sidebar containing nav links: Dashboard, Settings, Trade Log - verify with Vitest + RTL",
+        "Top status bar shows bot status dot (green=running, yellow=paused, red=stopped) - verify with Vitest + RTL",
+        "Top status bar shows current USDT balance - verify with Vitest + RTL",
+        "React Router navigates between pages without full reload - verify with Vitest + RTL",
+        "Responsive layout collapses sidebar on mobile - verify manual visual check",
+        "Dark theme applied by default using Tailwind dark classes - verify with Vitest + RTL"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Dashboard-UI",
+      "feature": "Dashboard home page with performance metrics",
+      "description": "Build the main Dashboard page component showing real-time performance metrics. Display cards for: Daily PnL (with +/- color), Cumulative PnL, Win/Loss Ratio, Current Exposure, Account Equity. Include a recent trades table showing last 10 trades. Poll /api/pnl and /api/balance every 5 seconds.",
+      "acceptance_criteria": [
+        "Daily PnL card shows value with green (positive) or red (negative) styling - verify with Vitest + RTL",
+        "Cumulative PnL, Win Rate, Current Exposure, Account Equity cards render correctly - verify with Vitest + RTL",
+        "Recent trades table shows timestamp, symbol, side, qty, price, pnl columns - verify with Vitest + RTL",
+        "Data auto-refreshes every 5 seconds via polling - verify with Vitest using fake timers",
+        "Loading skeleton shown while data is fetching - verify with Vitest + RTL",
+        "Error state displayed if API is unreachable - verify with Vitest + RTL"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Dashboard-UI",
+      "feature": "Settings page with strategy and risk controls",
+      "description": "Build the Settings page with form controls to adjust strategy parameters and risk limits. Strategy section: dropdown to select active strategy, sliders/inputs for RSI period, overbought/oversold thresholds, MACD periods, grid density/spacing. Risk section: spend per trade, max exposure, stop-loss %, max drawdown %, daily loss limit. Save button calls PUT /api/config.",
+      "acceptance_criteria": [
+        "Strategy dropdown lists all registered strategies - verify with Vitest + RTL",
+        "Strategy parameter inputs render dynamically based on selected strategy - verify with Vitest + RTL",
+        "Risk parameter inputs: spend_per_trade, max_exposure, stop_loss_pct, max_drawdown_pct, daily_loss_limit - verify with Vitest + RTL",
+        "Input validation prevents negative values and non-numeric input - verify with Vitest + RTL",
+        "Save button sends PUT /api/config and shows success/error toast - verify with Vitest + RTL",
+        "Current config values are pre-populated on page load from GET /api/config - verify with Vitest + RTL"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Dashboard-UI",
+      "feature": "Panic button and bot start/stop controls",
+      "description": "Add prominent control buttons to the dashboard: a large red Panic Button that calls POST /api/panic with a confirmation dialog, and Start/Stop toggle buttons that call POST /api/start and POST /api/stop. Show real-time feedback on action success/failure.",
+      "acceptance_criteria": [
+        "Panic button is visually prominent (large, red) and always visible in the top bar - verify with Vitest + RTL",
+        "Clicking panic shows a confirmation modal before executing - verify with Vitest + RTL",
+        "Confirming panic calls POST /api/panic and shows success toast - verify with Vitest + RTL",
+        "Start/Stop toggle reflects current bot status - verify with Vitest + RTL",
+        "Start calls POST /api/start, Stop calls POST /api/stop - verify with Vitest + RTL",
+        "Buttons are disabled with spinner during API call to prevent double-clicks - verify with Vitest + RTL"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Testing",
+      "feature": "Setup Python testing framework and fixtures",
+      "description": "Configure pytest with conftest.py, test fixtures for mocked OKX API responses, mocked WebSocket connections, and sample market data. Create tests/ directory structure mirroring src/. Add pytest-cov configuration for coverage reporting. Create a reusable MockOkxClient fixture that returns deterministic responses.",
+      "acceptance_criteria": [
+        "tests/conftest.py exists with shared fixtures - verify by running 'pytest --collect-only'",
+        "MockOkxClient fixture returns configurable fake balances, tickers, and order responses - verify with pytest",
+        "Sample market data fixture provides 100 candles of realistic OHLCV data - verify with pytest",
+        "pytest.ini or pyproject.toml configures test paths and coverage thresholds (80%) - verify by running 'pytest --cov'",
+        "tests/ directory mirrors src/ structure (tests/exchange/, tests/strategies/, tests/risk/, tests/engine/, tests/api/) - verify directory exists"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Testing",
+      "feature": "Setup frontend testing framework",
+      "description": "Configure Vitest and React Testing Library in the frontend project. Create test utilities including a custom render wrapper with providers (React Router, mock API context). Create MSW (Mock Service Worker) handlers for all API endpoints to enable integration-style component tests.",
+      "acceptance_criteria": [
+        "Vitest configured in vite.config.ts with jsdom environment - verify by running 'npm test'",
+        "React Testing Library installed and importable - verify with a sample test",
+        "Custom render utility wraps components with Router and providers - verify with Vitest",
+        "MSW handlers mock all /api/* endpoints with realistic responses - verify with Vitest",
+        "Coverage reporting configured with minimum 80% threshold - verify by running 'npm run test:coverage'",
+        "Sample test for App component verifies it renders without crashing - verify with Vitest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Testing",
+      "feature": "Integration tests for trading flow",
+      "description": "Create tests/integration/test_trading_flow.py that tests the full trading cycle end-to-end with mocked exchange. Simulate: market data arrives -> strategy generates signal -> risk check passes -> order placed -> fill received -> PnL updated. Also test the failure path: risk check blocks trade.",
+      "acceptance_criteria": [
+        "test_successful_trade_cycle: data -> signal -> risk OK -> order -> fill -> PnL updated - verify with pytest",
+        "test_risk_blocks_trade: signal generated but risk check returns rejected - verify with pytest",
+        "test_stop_loss_triggers: position drops below stop-loss -> market sell executed - verify with pytest",
+        "test_circuit_breaker_halts: drawdown exceeds limit -> trading loop stops - verify with pytest",
+        "test_panic_flattens: panic triggered -> all orders canceled, positions sold - verify with pytest",
+        "All tests use mocked exchange client (no real API calls) - verify tests pass offline"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Testing",
+      "feature": "API endpoint tests",
+      "description": "Create tests/api/test_routes.py that tests all FastAPI endpoints using httpx AsyncClient. Test each endpoint with valid requests, invalid requests, and error states. Verify response schemas match what the frontend expects.",
+      "acceptance_criteria": [
+        "test_get_status returns correct schema {status, uptime, active_strategy, heartbeat_ts} - verify with pytest",
+        "test_get_balance returns {usdt_available, total_equity, positions} - verify with pytest",
+        "test_get_pnl returns {daily_pnl, cumulative_pnl, win_rate, recent_trades} - verify with pytest",
+        "test_put_config updates config and returns success - verify with pytest",
+        "test_post_panic triggers panic and returns confirmation - verify with pytest",
+        "test_invalid_config returns 422 with validation errors - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Environment configuration and secrets management",
+      "description": "Create a centralized configuration module src/config.py that loads all settings from .env and provides typed access. Includes OKX API credentials, trading defaults (spend_per_trade, max_exposure), risk parameters, and server settings. Validate all required env vars on startup and fail fast with clear error messages if missing.",
+      "acceptance_criteria": [
+        "Config class loads all env vars via python-dotenv on import - verify with pytest using .env.test file",
+        "Missing required vars (OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE) raise ConfigError with clear message - verify with pytest",
+        "Default values provided for optional vars (SPEND_PER_TRADE=10, MAX_EXPOSURE=100, etc.) - verify with pytest",
+        "get_trading_config() returns dict suitable for strategy and risk initialization - verify with pytest",
+        "Config values are immutable after load; update only via hot-reload endpoint - verify with pytest",
+        ".env.example documents every variable with descriptions - verify file exists and lists all vars"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Structured logging system",
+      "description": "Create src/logging_config.py that configures Python logging with structured JSON output. Log levels: DEBUG for market data, INFO for trade executions and state changes, WARNING for risk events, ERROR for API failures. Include contextual fields: timestamp, component, trade_id where applicable. Log to console and rotating file (logs/bot.log).",
+      "acceptance_criteria": [
+        "Logging configured with JSON formatter outputting {timestamp, level, component, message, ...extra} - verify with pytest capturing log output",
+        "Console handler shows colored, human-readable output - verify with pytest",
+        "File handler writes to logs/bot.log with 10MB rotation, 5 backups - verify with pytest using temp directory",
+        "get_logger(component_name) returns a logger prefixed with the component - verify with pytest",
+        "Trade executions logged at INFO with trade_id, symbol, side, qty, price - verify with pytest",
+        "Risk events (stop-loss, circuit breaker) logged at WARNING - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Application entry point and lifecycle management",
+      "description": "Create backend/main.py as the single entry point that wires all components together. Initializes Config, OkxClient, WsStream, OrderManager, BalanceSync, strategy, RiskManager, TradingLoop, PnlTracker, and the FastAPI server. Handles graceful shutdown on SIGINT/SIGTERM: stops trading loop, closes WebSocket, cancels open orders if configured.",
+      "acceptance_criteria": [
+        "python main.py starts the FastAPI server with uvicorn on configurable host:port - verify by running and checking HTTP response",
+        "All components are initialized in correct dependency order - verify with pytest using mocks",
+        "Graceful shutdown on Ctrl+C: stops trading loop, closes WS, logs shutdown - verify with pytest using signal simulation",
+        "Startup logs show config summary (strategy, risk params, trading pair) without exposing secrets - verify with pytest",
+        "Health endpoint GET /api/health returns 200 immediately after startup - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Error handling and resilience patterns",
+      "description": "Create src/utils/resilience.py with reusable decorators and utilities: retry_with_backoff (for API calls), rate_limiter (token bucket for OKX rate limits), and circuit_breaker_decorator (for external service calls). All should be configurable and log their actions.",
+      "acceptance_criteria": [
+        "@retry_with_backoff(max_retries=3, base_delay=1.0) retries on specified exceptions with exponential backoff - verify with pytest",
+        "@rate_limiter(max_calls=60, period=2.0) enforces OKX rate limits using token bucket algorithm - verify with pytest",
+        "RateLimiter raises RateLimitExceeded if burst limit hit and wait=False - verify with pytest",
+        "All resilience events are logged with attempt count and delay - verify with pytest",
+        "Configurable exception types for retry (e.g., retry only on ConnectionError, TimeoutError) - verify with pytest"
+      ],
+      "passes": true
+    },
+    {
+      "group": "Infrastructure",
+      "feature": "Data persistence layer",
+      "description": "Create src/utils/storage.py providing simple JSON file-based persistence for trade logs, configuration snapshots, and state recovery. Support atomic writes (write to temp then rename) to prevent corruption. Include backup/restore functionality.",
+      "acceptance_criteria": [
+        "JsonStorage.save(filepath, data) writes JSON atomically (temp file + rename) - verify with pytest",
+        "JsonStorage.load(filepath) reads and parses JSON, returns None if file missing - verify with pytest",
+        "JsonStorage.backup(filepath) creates a timestamped copy in data/backups/ - verify with pytest",
+        "Thread-safe: concurrent saves to same file don't corrupt data - verify with pytest using threading",
+        "Data directory auto-created if missing - verify with pytest using temp directory"
+      ],
+      "passes": true
+    }
+  ]
+}
