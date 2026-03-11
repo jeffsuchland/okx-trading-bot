@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import InfoTooltip from '../components/InfoTooltip'
 
 interface PnlData {
   daily_pnl: number
@@ -87,39 +88,43 @@ export default function DashboardPage() {
 
   const cards = [
     {
-      label: 'Account Equity',
+      label: 'Your Account',
       value: equity,
       testId: 'card-equity',
       format: (v: number) => `$${formatUsd(v)}`,
       colorClass: 'text-white',
-      subtitle: 'Total portfolio value',
+      subtitle: 'Total value of your account',
+      info: 'This is the total value of everything in your account — your available cash plus any open trades. This number goes up when trades are profitable and down when they\'re not.',
       size: 'large' as const,
     },
     {
-      label: 'Available Balance',
+      label: 'Ready to Trade',
       value: available,
       testId: 'card-available',
       format: (v: number) => `$${formatUsd(v)}`,
       colorClass: 'text-white',
-      subtitle: 'USDT ready to trade',
+      subtitle: 'Cash available for new trades',
+      info: 'This is how much USDT you have available right now to open new trades. Money that\'s already in active trades is not included here.',
       size: 'large' as const,
     },
     {
-      label: 'Daily P&L',
+      label: "Today's Profit",
       value: dailyPnl,
       testId: 'card-daily-pnl',
       format: (v: number) => `${v >= 0 ? '+' : ''}$${formatUsd(Math.abs(v))}`,
       colorClass: dailyPnl >= 0 ? 'text-green-400' : 'text-red-400',
-      subtitle: "Today's profit/loss",
+      subtitle: dailyPnl >= 0 ? 'You\'re up today' : 'You\'re down today',
+      info: 'How much money you\'ve made or lost since the start of today. Green means profit, red means loss. This resets every day.',
       size: 'normal' as const,
     },
     {
-      label: 'Total P&L',
+      label: 'All-Time Profit',
       value: cumulativePnl,
       testId: 'card-cumulative-pnl',
       format: (v: number) => `${v >= 0 ? '+' : ''}$${formatUsd(Math.abs(v))}`,
       colorClass: cumulativePnl >= 0 ? 'text-green-400' : 'text-red-400',
-      subtitle: 'All-time profit/loss',
+      subtitle: cumulativePnl >= 0 ? 'Total earned so far' : 'Total lost so far',
+      info: 'Your total profit or loss since you started using the bot. This is the big picture number — it tells you whether the bot is making you money overall.',
       size: 'normal' as const,
     },
     {
@@ -128,16 +133,18 @@ export default function DashboardPage() {
       testId: 'card-win-rate',
       format: (v: number) => `${v.toFixed(1)}%`,
       colorClass: winRate >= 50 ? 'text-green-400' : winRate > 0 ? 'text-yellow-400' : 'text-gray-400',
-      subtitle: 'Profitable trades',
+      subtitle: 'How often trades are profitable',
+      info: 'The percentage of your trades that made money. Above 50% means you\'re winning more than you\'re losing. Even a 45% win rate can be profitable if your winners are bigger than your losers.',
       size: 'normal' as const,
     },
     {
-      label: 'Open Positions',
+      label: 'Active Trades',
       value: (balance?.positions ?? []).length,
       testId: 'card-exposure',
       format: (v: number) => String(v),
       colorClass: 'text-white',
-      subtitle: 'Active trades',
+      subtitle: 'Trades currently open',
+      info: 'How many trades the bot currently has open. Each one is using some of your "Ready to Trade" balance. They will close when the strategy decides to sell or when a safety limit is hit.',
       size: 'normal' as const,
     },
   ]
@@ -163,7 +170,10 @@ export default function DashboardPage() {
               card.size === 'large' ? 'ring-1 ring-gray-700/50' : ''
             }`}
           >
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{card.label}</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
+              {card.label}
+              <InfoTooltip title={card.label}>{card.info}</InfoTooltip>
+            </p>
             <p className={`text-2xl font-mono font-bold ${card.colorClass}`}>
               {card.format(card.value)}
             </p>

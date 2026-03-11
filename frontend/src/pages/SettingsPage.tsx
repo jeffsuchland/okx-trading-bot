@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import InfoTooltip from '../components/InfoTooltip'
 
 interface StrategyConfig {
   name: string
@@ -11,31 +12,80 @@ interface ConfigData {
 }
 
 const STRATEGIES = [
-  { value: 'MeanReversionStrategy', label: 'Mean Reversion (RSI + MACD)', description: 'Buys oversold dips, sells overbought rallies using RSI and MACD crossovers' },
-  { value: 'GridTradingStrategy', label: 'Grid Trading', description: 'Places buy/sell orders at fixed price intervals to profit from sideways markets' },
+  {
+    value: 'MeanReversionStrategy',
+    label: 'Buy the Dip',
+    icon: '📉',
+    tagline: 'Buy when prices drop, sell when they bounce back',
+    detail: 'This strategy watches for moments when a coin\'s price has dropped significantly below its average (oversold). It buys during these dips and sells when the price recovers. Think of it like buying on sale and selling at full price. It uses two well-known indicators (RSI and MACD) to time entries and exits.',
+    bestFor: 'Volatile markets with clear up-and-down swings',
+  },
+  {
+    value: 'GridTradingStrategy',
+    label: 'Grid Trading',
+    icon: '📊',
+    tagline: 'Profit from price bouncing up and down in a range',
+    detail: 'This strategy places a ladder of buy and sell orders at regular price intervals. When the price drops, it buys. When it rises, it sells. It doesn\'t try to predict direction — it profits from the natural back-and-forth movement. Works best when prices are moving sideways rather than trending strongly in one direction.',
+    bestFor: 'Sideways or range-bound markets',
+  },
 ]
 
 const MEAN_REVERSION_PARAMS = [
-  { key: 'rsi_period', label: 'RSI Period', description: 'Number of candles for RSI calculation', defaultVal: '14' },
-  { key: 'rsi_oversold', label: 'RSI Oversold Level', description: 'Buy signal when RSI drops below this', defaultVal: '30' },
-  { key: 'rsi_overbought', label: 'RSI Overbought Level', description: 'Sell signal when RSI rises above this', defaultVal: '70' },
-  { key: 'macd_fast', label: 'MACD Fast Period', description: 'Fast EMA period for MACD', defaultVal: '12' },
-  { key: 'macd_slow', label: 'MACD Slow Period', description: 'Slow EMA period for MACD', defaultVal: '26' },
-  { key: 'macd_signal', label: 'MACD Signal Period', description: 'Signal line EMA period', defaultVal: '9' },
+  { key: 'rsi_period', label: 'Lookback Window', defaultVal: '14', infoTitle: 'RSI Period', info: 'How many recent price candles the bot examines to decide if the price is unusually high or low. A smaller number (e.g. 7) reacts faster but may give false signals. A larger number (e.g. 21) is smoother but slower to react. Default of 14 is the industry standard.' },
+  { key: 'rsi_oversold', label: 'Buy Below', defaultVal: '30', infoTitle: 'RSI Oversold Threshold', info: 'When the "momentum score" drops below this number, the bot considers the price to be oversold (too cheap) and looks to buy. Lower values (e.g. 20) mean you only buy at extreme dips, which is safer but less frequent. Default of 30 is standard.' },
+  { key: 'rsi_overbought', label: 'Sell Above', defaultVal: '70', infoTitle: 'RSI Overbought Threshold', info: 'When the "momentum score" rises above this number, the bot considers the price to be overbought (too expensive) and looks to sell. Higher values (e.g. 80) mean you hold longer, potentially capturing more profit but with more risk. Default of 70 is standard.' },
+  { key: 'macd_fast', label: 'Fast Signal', defaultVal: '12', infoTitle: 'MACD Fast Period', info: 'The fast-moving average used to detect momentum changes. This tracks recent price action. Smaller = more responsive. Most traders use the default of 12.' },
+  { key: 'macd_slow', label: 'Slow Signal', defaultVal: '26', infoTitle: 'MACD Slow Period', info: 'The slow-moving average that provides the baseline trend. When the fast signal crosses above this, it suggests upward momentum. Most traders use the default of 26.' },
+  { key: 'macd_signal', label: 'Smoothing', defaultVal: '9', infoTitle: 'MACD Signal Line', info: 'Smooths out the difference between fast and slow signals to reduce noise. The standard value is 9. You generally don\'t need to change this.' },
 ]
 
 const GRID_PARAMS = [
-  { key: 'num_levels', label: 'Grid Levels', description: 'Number of buy/sell price levels', defaultVal: '10' },
-  { key: 'spacing_pct', label: 'Grid Spacing %', description: 'Price gap between each level', defaultVal: '0.5' },
-  { key: 'order_size_usdt', label: 'Order Size (USDT)', description: 'Amount per grid order', defaultVal: '10' },
+  { key: 'num_levels', label: 'Number of Orders', defaultVal: '10', infoTitle: 'Grid Levels', info: 'How many buy/sell order pairs to place in the grid. More levels = more trades but smaller profit per trade. Fewer levels = bigger moves needed but larger profit per trade. Start with 10 and adjust based on results.' },
+  { key: 'spacing_pct', label: 'Price Gap Between Orders', defaultVal: '0.5', infoTitle: 'Grid Spacing %', info: 'The percentage price difference between each order level. For example, 0.5% means orders are placed every 0.5% apart. Tighter spacing = more frequent trades. Wider spacing = trades only on bigger price moves.' },
+  { key: 'order_size_usdt', label: 'Amount Per Order', defaultVal: '10', infoTitle: 'Order Size (USDT)', info: 'How much USDT each grid order uses. This times the number of levels is your total capital commitment. Start small (e.g. $10) until you\'re comfortable with the strategy.' },
 ]
 
 const RISK_FIELDS = [
-  { key: 'spend_per_trade', label: 'Trade Size', description: 'USDT to spend per trade', unit: 'USDT' },
-  { key: 'max_exposure', label: 'Max Exposure', description: 'Maximum total USDT in open positions', unit: 'USDT' },
-  { key: 'stop_loss_pct', label: 'Stop Loss', description: 'Auto-close position if it drops by this %', unit: '%' },
-  { key: 'max_drawdown_pct', label: 'Max Drawdown', description: 'Halt all trading if account drops by this %', unit: '%' },
-  { key: 'daily_loss_limit', label: 'Daily Loss Limit', description: 'Stop trading for the day after losing this much', unit: 'USDT' },
+  {
+    key: 'spend_per_trade',
+    label: 'How much per trade?',
+    unit: 'USDT',
+    defaultVal: '10',
+    infoTitle: 'Trade Size',
+    info: 'The amount of USDT the bot spends each time it opens a new position. Start small ($5-10) while learning. You can increase this as you gain confidence. This is NOT your total investment — it\'s the size of each individual trade.',
+  },
+  {
+    key: 'max_exposure',
+    label: 'Maximum money at risk',
+    unit: 'USDT',
+    defaultVal: '100',
+    infoTitle: 'Maximum Exposure',
+    info: 'The maximum total USDT the bot will have in open positions at any time. Once this limit is reached, the bot won\'t open new trades until existing ones close. Think of it as your "trading budget". Set this to an amount you\'re comfortable having in play.',
+  },
+  {
+    key: 'stop_loss_pct',
+    label: 'Auto-close losing trades at',
+    unit: '%',
+    defaultVal: '2',
+    infoTitle: 'Stop Loss',
+    info: 'If a trade loses this much, the bot automatically closes it to prevent bigger losses. For example, 2% means if you buy at $100 and it drops to $98, the bot sells. This is your safety net. Most beginners should use 2-3%.',
+  },
+  {
+    key: 'max_drawdown_pct',
+    label: 'Emergency stop if account drops',
+    unit: '%',
+    defaultVal: '5',
+    infoTitle: 'Circuit Breaker',
+    info: 'If your total account value drops by this percentage from its peak, ALL trading stops immediately. This is your emergency brake. For example, 5% means if your $10,000 account drops to $9,500, the bot halts. You\'ll need to manually restart.',
+  },
+  {
+    key: 'daily_loss_limit',
+    label: 'Stop trading for the day after losing',
+    unit: 'USDT',
+    defaultVal: '50',
+    infoTitle: 'Daily Loss Limit',
+    info: 'The maximum amount the bot is allowed to lose in a single day. Once hit, it stops trading until the next day. This prevents bad days from becoming catastrophic. Set this to an amount where you\'d want to take a break and reassess.',
+  },
 ]
 
 export default function SettingsPage() {
@@ -44,6 +94,7 @@ export default function SettingsPage() {
   const [riskParams, setRiskParams] = useState<Record<string, string>>({})
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const loadConfig = useCallback(async () => {
     try {
@@ -102,9 +153,9 @@ export default function SettingsPage() {
         body: JSON.stringify({ strategy: stratConfig, risk: riskConfig }),
       })
       if (!res.ok) throw new Error('Save failed')
-      setToast({ type: 'success', message: 'Settings saved successfully' })
+      setToast({ type: 'success', message: 'Settings saved!' })
     } catch {
-      setToast({ type: 'error', message: 'Failed to save settings' })
+      setToast({ type: 'error', message: 'Failed to save. Is the backend running?' })
     } finally {
       setSaving(false)
     }
@@ -113,110 +164,141 @@ export default function SettingsPage() {
   const currentStrategyParams =
     strategy === 'MeanReversionStrategy' ? MEAN_REVERSION_PARAMS : GRID_PARAMS
 
-  const selectedStrategy = STRATEGIES.find((s) => s.value === strategy)
-
   return (
-    <div data-testid="settings-page" className="max-w-4xl">
-      <h1 className="text-2xl font-bold mb-2">Settings</h1>
-      <p className="text-gray-400 text-sm mb-6">Configure your trading strategy and risk parameters</p>
+    <div data-testid="settings-page" className="max-w-3xl">
+      <h1 className="text-2xl font-bold mb-1">Settings</h1>
+      <p className="text-gray-400 text-sm mb-8">Set up how your bot trades and how much risk to take</p>
 
       {toast && (
         <div
           data-testid={`toast-${toast.type}`}
-          className={`mb-6 p-4 rounded-lg text-sm flex items-center gap-2 ${
+          className={`mb-6 p-4 rounded-xl text-sm flex items-center gap-3 ${
             toast.type === 'success'
               ? 'bg-green-900/30 text-green-400 border border-green-800/50'
               : 'bg-red-900/30 text-red-400 border border-red-800/50'
           }`}
         >
-          <span>{toast.type === 'success' ? '✓' : '✕'}</span>
+          <span className="text-lg">{toast.type === 'success' ? '✓' : '✕'}</span>
           {toast.message}
         </div>
       )}
 
-      {/* Strategy Selection */}
-      <section className="mb-8 bg-gray-900 border border-gray-800 rounded-xl p-6">
-        <h2 className="text-lg font-semibold mb-1">Trading Strategy</h2>
-        <p className="text-gray-400 text-sm mb-4">Choose how the bot finds and executes trades</p>
+      {/* ── Strategy Selection ── */}
+      <section className="mb-8">
+        <h2 className="text-base font-semibold mb-4">Choose Your Trading Strategy</h2>
 
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-300 mb-2">Active Strategy</label>
-          <select
-            data-testid="strategy-dropdown"
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white w-full max-w-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            {STRATEGIES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-          {selectedStrategy && (
-            <p className="text-gray-500 text-xs mt-2">{selectedStrategy.description}</p>
-          )}
-        </div>
-
-        <h3 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">Strategy Parameters</h3>
-        <div data-testid="strategy-params" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {currentStrategyParams.map(({ key, label, description, defaultVal }) => (
-            <div key={key} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
-              <label className="block text-sm font-medium text-gray-200 mb-1">{label}</label>
-              <p className="text-xs text-gray-500 mb-2">{description}</p>
-              <input
-                data-testid={`input-${key}`}
-                type="text"
-                inputMode="decimal"
-                placeholder={defaultVal}
-                value={strategyParams[key] ?? ''}
-                onChange={(e) => handleStrategyParamChange(key, e.target.value)}
-                className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
-              />
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {STRATEGIES.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => setStrategy(s.value)}
+              className={`text-left rounded-xl p-5 border-2 transition-all ${
+                strategy === s.value
+                  ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30'
+                  : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">{s.icon}</span>
+                <span className="font-semibold text-white">{s.label}</span>
+                {strategy === s.value && (
+                  <span className="ml-auto text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">Active</span>
+                )}
+              </div>
+              <p className="text-sm text-gray-400 mb-3">{s.tagline}</p>
+              <p className="text-xs text-gray-500 leading-relaxed">{s.detail}</p>
+              <p className="text-xs text-gray-600 mt-2">Best for: {s.bestFor}</p>
+            </button>
           ))}
         </div>
+
+        <input type="hidden" data-testid="strategy-dropdown" value={strategy} />
       </section>
 
-      {/* Risk Management */}
-      <section className="mb-8 bg-gray-900 border border-gray-800 rounded-xl p-6">
-        <h2 className="text-lg font-semibold mb-1">Risk Management</h2>
-        <p className="text-gray-400 text-sm mb-4">Set limits to protect your capital</p>
+      {/* ── Safety Settings ── */}
+      <section className="mb-8">
+        <h2 className="text-base font-semibold mb-1">Safety Limits</h2>
+        <p className="text-gray-400 text-xs mb-4">These protect your money. The bot will automatically stop if any limit is hit.</p>
 
-        <div data-testid="risk-params" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {RISK_FIELDS.map(({ key, label, description, unit }) => (
-            <div key={key} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
-              <label className="block text-sm font-medium text-gray-200 mb-1">{label}</label>
-              <p className="text-xs text-gray-500 mb-2">{description}</p>
-              <div className="relative">
+        <div data-testid="risk-params" className="space-y-3">
+          {RISK_FIELDS.map(({ key, label, unit, defaultVal, infoTitle, info }) => (
+            <div key={key} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-200">
+                  {label}
+                  <InfoTooltip title={infoTitle}>{info}</InfoTooltip>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
                 <input
                   data-testid={`input-${key}`}
                   type="text"
                   inputMode="decimal"
+                  placeholder={defaultVal}
                   value={riskParams[key] ?? ''}
                   onChange={(e) => handleRiskParamChange(key, e.target.value)}
-                  className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white w-full pr-14 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
+                  className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white w-32 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono text-center"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">{unit}</span>
+                <span className="text-sm text-gray-500">{unit}</span>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Save Button */}
-      <div className="flex items-center gap-4">
+      {/* ── Advanced Strategy Tuning (collapsed by default) ── */}
+      <section className="mb-8">
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-3"
+        >
+          <span className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>&#9654;</span>
+          Advanced: Fine-tune strategy parameters
+        </button>
+
+        {showAdvanced && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p className="text-xs text-gray-500 mb-4">
+              These control the technical details of your selected strategy. The defaults work well for most situations — only change these if you know what you're doing.
+            </p>
+            <div data-testid="strategy-params" className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {currentStrategyParams.map(({ key, label, defaultVal, infoTitle, info }) => (
+                <div key={key} className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                  <div className="flex items-center mb-2">
+                    <label className="text-xs font-medium text-gray-300">{label}</label>
+                    <InfoTooltip title={infoTitle}>{info}</InfoTooltip>
+                  </div>
+                  <input
+                    data-testid={`input-${key}`}
+                    type="text"
+                    inputMode="decimal"
+                    placeholder={defaultVal}
+                    value={strategyParams[key] ?? ''}
+                    onChange={(e) => handleStrategyParamChange(key, e.target.value)}
+                    className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── Save ── */}
+      <div className="flex items-center gap-4 pb-8">
         <button
           data-testid="save-button"
           onClick={handleSave}
           disabled={saving}
-          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-8 py-3 rounded-lg font-semibold text-sm transition-colors shadow-lg shadow-blue-600/20"
+          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-8 py-3 rounded-xl font-semibold transition-colors shadow-lg shadow-blue-600/20"
         >
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
         <button
           onClick={loadConfig}
-          className="text-gray-400 hover:text-white px-4 py-3 rounded-lg text-sm transition-colors"
+          className="text-gray-400 hover:text-white px-4 py-3 rounded-xl text-sm transition-colors"
         >
-          Reset to Current
+          Reset
         </button>
       </div>
     </div>
