@@ -105,7 +105,7 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
         return {"success": True, "message": "Panic mode activated"}
 
     @router.post("/start")
-    def post_start() -> dict[str, Any]:
+    async def post_start() -> dict[str, Any]:
         trading_loop = deps.get("trading_loop")
         if trading_loop is None:
             raise HTTPException(status_code=503, detail="Trading loop not available")
