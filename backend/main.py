@@ -10,6 +10,8 @@ from typing import Any
 
 import uvicorn
 
+from unittest.mock import MagicMock
+
 from src.api.app import create_app
 from src.config import Config
 from src.engine.pnl_tracker import PnlTracker
@@ -20,6 +22,8 @@ from src.exchange.order_manager import OrderManager
 from src.exchange.ws_stream import WsStream
 from src.logging_config import get_logger, setup_logging
 from src.risk.risk_manager import RiskManager
+from src.strategies.grid_trading import GridTradingStrategy
+from src.strategies.mean_reversion import MeanReversionStrategy
 from src.strategies.registry import StrategyRegistry
 
 logger = get_logger("main")
@@ -37,6 +41,18 @@ def log_config_summary(config: Config) -> None:
     logger.info("Daily loss limit: %.2f USDT", config.daily_loss_limit)
     logger.info("Server: %s:%d", config.server_host, config.server_port)
     logger.info("Sandbox mode: %s", config.okx_sandbox)
+    if config.demo_mode:
+        logger.warning("*** DEMO MODE — no real exchange connection, using mock data ***")
+
+
+def _build_demo_client() -> MagicMock:
+    """Create a mock OKX client for demo mode."""
+    client = MagicMock()
+    client.place_order.return_value = {"order_id": "demo-001", "sCode": "0", "sMsg": ""}
+    client.cancel_order.return_value = {"ordId": "demo-001", "sCode": "0", "sMsg": ""}
+    client.get_positions.return_value = []
+    client.get_balance.return_value = {"totalEq": "10000.00", "details": [{"ccy": "USDT", "availBal": "10000.00"}]}
+    return client
 
 
 def build_components(config: Config) -> dict[str, Any]:
@@ -45,17 +61,21 @@ def build_components(config: Config) -> dict[str, Any]:
     Returns:
         Dict of named components for injection into the API.
     """
-    # 1. Exchange client
-    creds = config.get_okx_credentials()
-    okx_client = OkxClient(
-        api_key=creds["api_key"],
-        secret_key=creds["secret_key"],
-        passphrase=creds["passphrase"],
-        sandbox=config.okx_sandbox,
-    )
-
-    # 2. WebSocket stream
-    ws_stream = WsStream(sandbox=config.okx_sandbox)
+    if config.demo_mode:
+        # Demo mode: use mocked exchange client
+        okx_client = _build_demo_client()
+        ws_stream = MagicMock()
+    else:
+        # 1. Exchange client
+        creds = config.get_okx_credentials()
+        okx_client = OkxClient(
+            api_key=creds["api_key"],
+            secret_key=creds["secret_key"],
+            passphrase=creds["passphrase"],
+            sandbox=config.okx_sandbox,
+        )
+        # 2. WebSocket stream
+        ws_stream = WsStream(sandbox=config.okx_sandbox)
 
     # 3. Order manager (depends on client)
     order_manager = OrderManager(okx_client)
@@ -63,9 +83,17 @@ def build_components(config: Config) -> dict[str, Any]:
     # 4. Balance sync (depends on client)
     balance_sync = BalanceSync(okx_client)
 
+    # Seed demo balance so the UI shows simulated funds
+    if config.demo_mode:
+        balance_sync._usdt_balance = 10000.0
+        balance_sync._total_equity = 10000.0
+
     # 5. Strategy (from registry)
     trading_config = config.get_trading_config()
-    strategy_cls = StrategyRegistry.get(config.strategy_name)
+    registry = StrategyRegistry()
+    registry.register("MeanReversionStrategy", MeanReversionStrategy)
+    registry.register("GridTradingStrategy", GridTradingStrategy)
+    strategy_cls = registry.get(config.strategy_name)
     strategy = strategy_cls(config=trading_config)
 
     # 6. Risk manager (depends on config)

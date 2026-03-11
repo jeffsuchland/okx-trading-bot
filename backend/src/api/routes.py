@@ -53,19 +53,10 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
         balance_sync = deps.get("balance_sync")
         if balance_sync is None:
             return {"usdt_available": 0.0, "total_equity": 0.0, "positions": []}
-        snapshot = balance_sync.get_balances()
-        positions = balance_sync.get_positions()
-        usdt = 0.0
-        total_equity = 0.0
-        for bal in snapshot:
-            if bal.get("ccy") == "USDT":
-                usdt = float(bal.get("availBal", 0))
-                total_equity = float(bal.get("eq", 0))
-                break
         return {
-            "usdt_available": usdt,
-            "total_equity": total_equity,
-            "positions": positions,
+            "usdt_available": balance_sync.get_usdt_balance(),
+            "total_equity": balance_sync.get_total_equity(),
+            "positions": balance_sync.get_positions(),
         }
 
     @router.get("/pnl")

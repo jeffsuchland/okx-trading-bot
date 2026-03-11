@@ -17,6 +17,8 @@ class Config:
 
     Required vars: OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE.
     Optional vars have defaults documented in .env.example.
+
+    Set DEMO_MODE=true to skip API key validation and run with dummy data.
     """
 
     _REQUIRED_VARS = ("OKX_API_KEY", "OKX_SECRET_KEY", "OKX_PASSPHRASE")
@@ -27,12 +29,16 @@ class Config:
         else:
             load_dotenv(override=True)
 
-        self._validate_required()
+        # Demo mode skips API key validation
+        self.demo_mode: bool = os.getenv("DEMO_MODE", "false").lower() == "true"
 
-        # OKX credentials
-        self.okx_api_key: str = os.environ["OKX_API_KEY"]
-        self.okx_secret_key: str = os.environ["OKX_SECRET_KEY"]
-        self.okx_passphrase: str = os.environ["OKX_PASSPHRASE"]
+        if not self.demo_mode:
+            self._validate_required()
+
+        # OKX credentials (dummy values in demo mode)
+        self.okx_api_key: str = os.environ.get("OKX_API_KEY", "") or ("demo-api-key" if self.demo_mode else "")
+        self.okx_secret_key: str = os.environ.get("OKX_SECRET_KEY", "") or ("demo-secret-key" if self.demo_mode else "")
+        self.okx_passphrase: str = os.environ.get("OKX_PASSPHRASE", "") or ("demo-passphrase" if self.demo_mode else "")
         self.okx_sandbox: bool = os.getenv("OKX_SANDBOX", "true").lower() == "true"
 
         # Trading defaults
