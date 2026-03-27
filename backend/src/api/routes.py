@@ -6,17 +6,55 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, field_validator, model_validator
+
+from src.api.auth import require_api_key
 
 
 _start_time = time.time()
 
 
+class RiskConfigUpdate(BaseModel):
+    """Validated risk fields for PUT /api/config."""
+
+    spend_per_trade: float | None = None
+    max_exposure: float | None = None
+    stop_loss_pct: float | None = None
+    max_drawdown_pct: float | None = None
+    daily_loss_limit: float | None = None
+
+    @field_validator("spend_per_trade", "max_exposure", "daily_loss_limit", mode="before")
+    @classmethod
+    def must_be_non_negative(cls, v: Any) -> Any:
+        if v is not None and float(v) < 0:
+            raise ValueError("must be a non-negative number")
+        return v
+
+    @field_validator("stop_loss_pct", "max_drawdown_pct", mode="before")
+    @classmethod
+    def must_be_percentage(cls, v: Any) -> Any:
+        if v is not None:
+            fv = float(v)
+            if fv < 0 or fv > 100:
+                raise ValueError("must be between 0 and 100")
+        return v
+
+    model_config = {"extra": "allow"}
+
+
 class ConfigUpdate(BaseModel):
     """Request body for PUT /api/config."""
+
     strategy: dict[str, Any] | None = None
-    risk: dict[str, Any] | None = None
+    risk: RiskConfigUpdate | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_risk(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "risk" in values and isinstance(values["risk"], dict):
+            values["risk"] = RiskConfigUpdate(**values["risk"])
+        return values
 
 
 def create_router(deps: dict[str, Any]) -> APIRouter:
@@ -86,17 +124,17 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
             result["risk"] = risk_manager.get_risk_status()
         return result
 
-    @router.put("/config")
+    @router.put("/config", dependencies=[Depends(require_api_key)])
     def put_config(body: ConfigUpdate) -> dict[str, Any]:
         strategy = deps.get("strategy")
         risk_manager = deps.get("risk_manager")
         if body.strategy and strategy is not None:
             strategy.update_config(body.strategy)
         if body.risk and risk_manager is not None:
-            risk_manager.update_config(body.risk)
+            risk_manager.update_config(body.risk.model_dump(exclude_none=True))
         return {"success": True}
 
-    @router.post("/panic")
+    @router.post("/panic", dependencies=[Depends(require_api_key)])
     async def post_panic() -> dict[str, Any]:
         risk_manager = deps.get("risk_manager")
         if risk_manager is None:
@@ -104,7 +142,7 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
         await risk_manager.panic()
         return {"success": True, "message": "Panic mode activated"}
 
-    @router.post("/start")
+    @router.post("/start", dependencies=[Depends(require_api_key)])
     async def post_start() -> dict[str, Any]:
         trading_loop = deps.get("trading_loop")
         if trading_loop is None:
@@ -141,7 +179,7 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
         trading_loop.start()
         return {"success": True, "status": "running"}
 
-    @router.post("/stop")
+    @router.post("/stop", dependencies=[Depends(require_api_key)])
     async def post_stop() -> dict[str, Any]:
         trading_loop = deps.get("trading_loop")
         if trading_loop is None:
