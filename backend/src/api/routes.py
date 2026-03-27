@@ -97,11 +97,11 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
         return {"success": True}
 
     @router.post("/panic")
-    def post_panic() -> dict[str, Any]:
+    async def post_panic() -> dict[str, Any]:
         risk_manager = deps.get("risk_manager")
         if risk_manager is None:
             raise HTTPException(status_code=503, detail="Risk manager not available")
-        risk_manager.panic()
+        await risk_manager.panic()
         return {"success": True, "message": "Panic mode activated"}
 
     @router.post("/start")
