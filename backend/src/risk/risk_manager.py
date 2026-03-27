@@ -97,6 +97,9 @@ class RiskManager:
         """Return a unified status dict for the dashboard."""
         return {
             "halted": self._halted,
+            "spend_per_trade": self._position_sizer._spend_per_trade,
+            "max_total_exposure": self._position_sizer._max_total_exposure,
+            "stop_loss_pct": self._stop_loss._default_pct,
             "current_exposure": self._position_sizer.get_current_exposure(),
             "circuit_breaker": self._circuit_breaker.get_status(),
             "daily_limit": self._daily_limit.get_status(),

@@ -45,6 +45,8 @@ const GRID_PARAMS = [
   { key: 'order_size_usdt', label: 'Amount Per Order', defaultVal: '10', infoTitle: 'Order Size (USDT)', info: 'How much USDT each grid order uses. This times the number of levels is your total capital commitment. Start small (e.g. $10) until you\'re comfortable with the strategy.' },
 ]
 
+// API key names must match what PUT /api/config risk_manager.update_config() accepts.
+// GET /api/config returns a nested risk status; we extract the editable params in loadConfig.
 const RISK_FIELDS = [
   {
     key: 'spend_per_trade',
@@ -55,7 +57,7 @@ const RISK_FIELDS = [
     info: 'The amount of USDT the bot spends each time it opens a new position. Start small ($5-10) while learning. You can increase this as you gain confidence. This is NOT your total investment — it\'s the size of each individual trade.',
   },
   {
-    key: 'max_exposure',
+    key: 'max_total_exposure',
     label: 'Maximum money at risk',
     unit: 'USDT',
     defaultVal: '100',
@@ -79,7 +81,7 @@ const RISK_FIELDS = [
     info: 'If your total account value drops by this percentage from its peak, ALL trading stops immediately. This is your emergency brake. For example, 5% means if your $10,000 account drops to $9,500, the bot halts. You\'ll need to manually restart.',
   },
   {
-    key: 'daily_loss_limit',
+    key: 'max_daily_loss',
     label: 'Stop trading for the day after losing',
     unit: 'USDT',
     defaultVal: '50',
@@ -108,6 +110,21 @@ export default function SettingsPage() {
           params[k] = String(v)
         }
         setStrategyParams(params)
+      }
+      // Extract editable risk params from the nested get_risk_status() shape:
+      // Top-level: spend_per_trade, max_total_exposure, stop_loss_pct
+      // Nested: circuit_breaker.max_drawdown_pct, daily_limit.max_daily_loss
+      if (data.risk && typeof data.risk === 'object') {
+        const risk = data.risk as Record<string, unknown>
+        const rp: Record<string, string> = {}
+        if (risk.spend_per_trade != null) rp.spend_per_trade = String(risk.spend_per_trade)
+        if (risk.max_total_exposure != null) rp.max_total_exposure = String(risk.max_total_exposure)
+        if (risk.stop_loss_pct != null) rp.stop_loss_pct = String(risk.stop_loss_pct)
+        const cb = risk.circuit_breaker as Record<string, unknown> | undefined
+        const dl = risk.daily_limit as Record<string, unknown> | undefined
+        if (cb?.max_drawdown_pct != null) rp.max_drawdown_pct = String(cb.max_drawdown_pct)
+        if (dl?.max_daily_loss != null) rp.max_daily_loss = String(dl.max_daily_loss)
+        setRiskParams(rp)
       }
     } catch {
       // silent fail on load
@@ -152,6 +169,22 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ strategy: stratConfig, risk: riskConfig }),
       })
+
+      if (res.status === 422) {
+        const err = await res.json()
+        const detail = err?.detail
+        let msg = 'Invalid values — check your inputs.'
+        if (Array.isArray(detail) && detail.length > 0) {
+          msg = detail.map((d: { msg?: string; loc?: string[] }) =>
+            [d.loc?.slice(1).join('.'), d.msg].filter(Boolean).join(': ')
+          ).join('; ')
+        } else if (typeof detail === 'string') {
+          msg = detail
+        }
+        setToast({ type: 'error', message: msg })
+        return
+      }
+
       if (!res.ok) throw new Error('Save failed')
       setToast({ type: 'success', message: 'Settings saved!' })
     } catch {

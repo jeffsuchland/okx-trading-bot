@@ -546,3 +546,14 @@ This file tracks all implementation cycles, decisions, and learnings during deve
 * **Files:** backend/src/utils/storage.py, backend/tests/utils/test_storage.py
 * **Verification:** pytest tests/utils/test_storage.py -v (exit code 0 — all tests pass)
 * **Result:** Success
+
+---
+
+## [Fix] Settings page risk parameter load/save
+
+* **Date:** 2026-03-27
+* **Status:** Done
+* **Summary:** Fixed SettingsPage to properly load and save all risk parameters from/to the API.
+* **Changes:**
+  - `frontend/src/pages/SettingsPage.tsx`: Renamed `max_exposure` key to `max_total_exposure` and `daily_loss_limit` to `max_daily_loss` in `RISK_FIELDS` to match backend `update_config()` param names. Updated `loadConfig` to extract all five editable risk params from the nested `get_risk_status()` response shape (top-level: `spend_per_trade`, `max_total_exposure`, `stop_loss_pct`; nested: `circuit_breaker.max_drawdown_pct`, `daily_limit.max_daily_loss`). Added 422 validation error handling in `handleSave` to surface field-level errors from FastAPI in a user-friendly toast.
+  - `backend/src/risk/risk_manager.py`: Added `spend_per_trade`, `max_total_exposure`, and `stop_loss_pct` to `get_risk_status()` so the frontend can pre-populate all five safety limit fields on page load.
