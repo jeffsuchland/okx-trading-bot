@@ -54,8 +54,12 @@ class StopLossManager:
 
             # Initialize stop level if not tracked
             if symbol not in self._stop_levels:
+                if self._mode == "trailing":
+                    initial_stop = self._calculate_stop_price(current_price)
+                else:
+                    initial_stop = self._calculate_stop_price(entry_price)
                 self._stop_levels[symbol] = {
-                    "stop_price": self._calculate_stop_price(entry_price),
+                    "stop_price": initial_stop,
                     "entry_price": entry_price,
                     "highest_price": current_price,
                 }
