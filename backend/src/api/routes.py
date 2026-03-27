@@ -109,6 +109,35 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
         trading_loop = deps.get("trading_loop")
         if trading_loop is None:
             raise HTTPException(status_code=503, detail="Trading loop not available")
+
+        config = deps.get("config")
+        ws_stream = deps.get("ws_stream")
+        balance_sync = deps.get("balance_sync")
+
+        # Start WebSocket stream and subscribe to market data
+        if ws_stream is not None and hasattr(ws_stream, "start") and not callable(getattr(ws_stream, "_running", None)):
+            try:
+                ws_started = getattr(ws_stream, "_running", False)
+                if not ws_started:
+                    ws_stream.start()
+                    trading_pair = config.trading_pair if config is not None else "BTC-USDT"
+                    await ws_stream.connect()
+                    await ws_stream.subscribe("tickers", trading_pair)
+            except Exception as e:
+                # Log but don't fail — trading loop can still run without live WS data
+                import logging
+                logging.getLogger("routes").warning("WebSocket start failed: %s", e)
+
+        # Start balance sync background task
+        if balance_sync is not None and hasattr(balance_sync, "start"):
+            try:
+                bs_running = getattr(balance_sync, "_running", False)
+                if not bs_running:
+                    balance_sync.start()
+            except Exception as e:
+                import logging
+                logging.getLogger("routes").warning("Balance sync start failed: %s", e)
+
         trading_loop.start()
         return {"success": True, "status": "running"}
 
@@ -118,6 +147,14 @@ def create_router(deps: dict[str, Any]) -> APIRouter:
         if trading_loop is None:
             raise HTTPException(status_code=503, detail="Trading loop not available")
         await trading_loop.stop()
+
+        balance_sync = deps.get("balance_sync")
+        if balance_sync is not None and hasattr(balance_sync, "stop"):
+            try:
+                await balance_sync.stop()
+            except Exception:
+                pass
+
         return {"success": True, "status": "stopped"}
 
     return router

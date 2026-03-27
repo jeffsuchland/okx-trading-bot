@@ -32,6 +32,7 @@ def manager(mock_client: MagicMock) -> OrderManager:
 class TestPlaceLimitOrder:
     """Test place_limit_order method."""
 
+    @pytest.mark.asyncio
     async def test_places_order_and_tracks_it(self, manager: OrderManager, mock_client: MagicMock) -> None:
         result = await manager.place_limit_order("BTC-USDT", "buy", "0.001", "42000")
         assert result["order_id"] == "ord-001"
@@ -49,6 +50,7 @@ class TestPlaceLimitOrder:
         assert open_orders[0]["symbol"] == "BTC-USDT"
         assert open_orders[0]["side"] == "buy"
 
+    @pytest.mark.asyncio
     async def test_tracks_multiple_orders(self, manager: OrderManager, mock_client: MagicMock) -> None:
         mock_client.place_order.side_effect = [
             {"order_id": "ord-001", "client_order_id": "", "status_code": "0", "status_msg": ""},
@@ -62,6 +64,7 @@ class TestPlaceLimitOrder:
 class TestCancelOrder:
     """Test cancel_order method."""
 
+    @pytest.mark.asyncio
     async def test_cancels_and_removes_from_tracking(self, manager: OrderManager, mock_client: MagicMock) -> None:
         await manager.place_limit_order("BTC-USDT", "buy", "0.001", "42000")
         assert len(manager.get_open_orders()) == 1
@@ -70,6 +73,7 @@ class TestCancelOrder:
         mock_client.cancel_order.assert_called_once_with(symbol="BTC-USDT", order_id="ord-001")
         assert len(manager.get_open_orders()) == 0
 
+    @pytest.mark.asyncio
     async def test_cancel_nonexistent_order_does_not_crash(self, manager: OrderManager) -> None:
         await manager.cancel_order("BTC-USDT", "nonexistent")
         assert len(manager.get_open_orders()) == 0
@@ -81,6 +85,7 @@ class TestGetOpenOrders:
     def test_returns_empty_list_when_no_orders(self, manager: OrderManager) -> None:
         assert manager.get_open_orders() == []
 
+    @pytest.mark.asyncio
     async def test_returns_list_of_tracked_orders(self, manager: OrderManager) -> None:
         await manager.place_limit_order("BTC-USDT", "buy", "0.001", "42000")
         orders = manager.get_open_orders()
@@ -91,6 +96,7 @@ class TestGetOpenOrders:
 class TestCancelAllOrders:
     """Test cancel_all_orders method."""
 
+    @pytest.mark.asyncio
     async def test_cancels_all_tracked_orders(self, manager: OrderManager, mock_client: MagicMock) -> None:
         mock_client.place_order.side_effect = [
             {"order_id": "ord-001", "client_order_id": "", "status_code": "0", "status_msg": ""},
@@ -104,6 +110,7 @@ class TestCancelAllOrders:
         assert len(results) == 2
         assert len(manager.get_open_orders()) == 0
 
+    @pytest.mark.asyncio
     async def test_cancel_all_with_no_orders(self, manager: OrderManager) -> None:
         results = await manager.cancel_all_orders()
         assert results == []
@@ -112,6 +119,7 @@ class TestCancelAllOrders:
 class TestPanicFlatten:
     """Test panic_flatten method."""
 
+    @pytest.mark.asyncio
     async def test_cancels_orders_and_sells_positions(self, manager: OrderManager, mock_client: MagicMock) -> None:
         await manager.place_limit_order("BTC-USDT", "buy", "0.001", "42000")
 
@@ -125,12 +133,14 @@ class TestPanicFlatten:
         assert result["positions_closed"] == 2
         assert len(manager.get_open_orders()) == 0
 
+    @pytest.mark.asyncio
     async def test_panic_with_no_positions(self, manager: OrderManager, mock_client: MagicMock) -> None:
         await manager.place_limit_order("BTC-USDT", "buy", "0.001", "42000")
         result = await manager.panic_flatten(positions=None)
         assert result["orders_cancelled"] == 1
         assert result["positions_closed"] == 0
 
+    @pytest.mark.asyncio
     async def test_panic_closes_short_positions_with_buy(self, manager: OrderManager, mock_client: MagicMock) -> None:
         positions = [{"symbol": "BTC-USDT", "size": "0.001", "side": "short"}]
         await manager.panic_flatten(positions=positions)
@@ -138,6 +148,7 @@ class TestPanicFlatten:
         call_args = mock_client.place_order.call_args_list[-1]
         assert call_args[1]["side"] == "buy"
 
+    @pytest.mark.asyncio
     async def test_panic_with_empty_state(self, manager: OrderManager) -> None:
         result = await manager.panic_flatten()
         assert result["orders_cancelled"] == 0
@@ -147,6 +158,7 @@ class TestPanicFlatten:
 class TestRateLimiting:
     """Test rate limiting behavior."""
 
+    @pytest.mark.asyncio
     async def test_throttle_allows_requests_within_limit(self, mock_client: MagicMock) -> None:
         mgr = OrderManager(client=mock_client, max_requests_per_window=5, window_seconds=1.0)
         for i in range(5):

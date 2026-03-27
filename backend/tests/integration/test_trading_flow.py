@@ -60,6 +60,7 @@ def _feed_overbought_data(strategy: MeanReversionStrategy) -> None:
 class TestSuccessfulTradeCycle:
     """Test: data -> signal -> risk OK -> order -> fill -> PnL updated."""
 
+    @pytest.mark.asyncio
     async def test_successful_trade_cycle(self, tmp_path: Any) -> None:
         # Setup components
         client = _make_mock_client()
@@ -140,6 +141,7 @@ class TestRiskBlocksTrade:
 class TestStopLossTriggers:
     """Test: position drops below stop-loss -> market sell executed."""
 
+    @pytest.mark.asyncio
     async def test_stop_loss_triggers(self) -> None:
         client = _make_mock_client()
         order_manager = OrderManager(client)
@@ -197,6 +199,7 @@ class TestCircuitBreakerHalts:
 class TestPanicFlattens:
     """Test: panic triggered -> all orders canceled, positions sold."""
 
+    @pytest.mark.asyncio
     async def test_panic_flattens(self) -> None:
         client = _make_mock_client()
         order_manager = OrderManager(client)
