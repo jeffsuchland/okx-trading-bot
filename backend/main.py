@@ -72,10 +72,10 @@ def build_components(config: Config) -> dict[str, Any]:
             api_key=creds["api_key"],
             secret_key=creds["secret_key"],
             passphrase=creds["passphrase"],
-            sandbox=config.okx_sandbox,
+            simulated=config.okx_sandbox,
         )
         # 2. WebSocket stream
-        ws_stream = WsStream(sandbox=config.okx_sandbox)
+        ws_stream = WsStream()
 
     # 3. Order manager (depends on client)
     order_manager = OrderManager(okx_client)
