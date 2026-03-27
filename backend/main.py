@@ -10,7 +10,7 @@ from typing import Any
 
 import uvicorn
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from src.api.app import create_app
 from src.config import Config
@@ -51,7 +51,16 @@ def _build_demo_client() -> MagicMock:
     client.place_order.return_value = {"order_id": "demo-001", "sCode": "0", "sMsg": ""}
     client.cancel_order.return_value = {"ordId": "demo-001", "sCode": "0", "sMsg": ""}
     client.get_positions.return_value = []
-    client.get_balance.return_value = {"totalEq": "10000.00", "details": [{"ccy": "USDT", "availBal": "10000.00"}]}
+    # Must match OkxClient.get_account_balance() return format
+    client.get_account_balance.return_value = {
+        "currency": "USDT",
+        "available": 10000.0,
+        "equity": 10000.0,
+        "frozen": 0.0,
+    }
+    # Mock the internal _account_api.get_positions() for BalanceSync._sync_positions()
+    client._account_api.get_positions.return_value = {"code": "0", "data": []}
+    client._check_response.return_value = None
     return client
 
 
@@ -66,6 +75,10 @@ def build_components(config: Config) -> dict[str, Any]:
         okx_client = _build_demo_client()
         ws_stream = MagicMock()
         ws_stream.queue = asyncio.Queue()
+        # Make async methods awaitable so /api/start doesn't crash
+        ws_stream.connect = AsyncMock()
+        ws_stream.subscribe = AsyncMock()
+        ws_stream._running = False
     else:
         # 1. Exchange client
         creds = config.get_okx_credentials()
