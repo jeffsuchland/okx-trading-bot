@@ -95,10 +95,10 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('risk-params')).toBeDefined()
       expect(screen.getByTestId('input-spend_per_trade')).toBeDefined()
-      expect(screen.getByTestId('input-max_exposure')).toBeDefined()
+      expect(screen.getByTestId('input-max_total_exposure')).toBeDefined()
       expect(screen.getByTestId('input-stop_loss_pct')).toBeDefined()
       expect(screen.getByTestId('input-max_drawdown_pct')).toBeDefined()
-      expect(screen.getByTestId('input-daily_loss_limit')).toBeDefined()
+      expect(screen.getByTestId('input-max_daily_loss')).toBeDefined()
     })
   })
 
