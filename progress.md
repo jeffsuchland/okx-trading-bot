@@ -492,6 +492,17 @@ This file tracks all implementation cycles, decisions, and learnings during deve
 
 ---
 
+## [2026-03-27] Bug Fix H6: Shutdown lifecycle — signal handler using wrong event loop
+
+- **Status:** Done
+- **Engineer:** Fixed signal handler using `asyncio.new_event_loop()` (a dead loop, not uvicorn's running loop).
+- **Solution:** Replaced the broken `signal.signal()` + `loop.run_until_complete()` pattern with a FastAPI lifespan context manager (`@asynccontextmanager`). The lifespan runs in the actual uvicorn event loop, so `await shutdown(components)` properly cleans up all async resources.
+- **Shutdown now covers:** trading loop stop, balance sync stop, open order cancellation, WebSocket close, background task cancellation.
+- **`create_app` updated** to accept an optional `lifespan` parameter, passed through to `FastAPI(lifespan=...)`.
+- **Files:** `backend/main.py`, `backend/src/api/app.py`
+
+---
+
 ## [Cycle 29] Data persistence layer
 
 * **Status:** In Progress
