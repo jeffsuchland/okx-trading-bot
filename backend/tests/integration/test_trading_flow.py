@@ -96,7 +96,7 @@ class TestSuccessfulTradeCycle:
         assert approved, f"Risk check should pass: {reason}"
 
         # 4. Place order
-        result = order_manager.place_market_order("BTC-USDT", "buy", "0.001")
+        result = await order_manager.place_market_order("BTC-USDT", "buy", "0.001")
         assert result["order_id"].startswith("test-order-001")
 
         # 5. Record fill and update PnL
