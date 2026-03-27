@@ -164,20 +164,22 @@ class TestUpdateConfig:
 class TestPanic:
     """Test panic mode delegates to OrderManager and halts."""
 
-    def test_panic_sets_halted(self, rm: RiskManager) -> None:
-        rm.panic()
+    async def test_panic_sets_halted(self, rm: RiskManager) -> None:
+        await rm.panic()
         assert rm._halted is True
 
-    def test_panic_calls_order_manager(self, rm_with_om: RiskManager) -> None:
-        rm_with_om.panic()
+    async def test_panic_calls_order_manager(self, rm_with_om: RiskManager) -> None:
+        from unittest.mock import AsyncMock
+        rm_with_om._order_manager.panic_flatten = AsyncMock()
+        await rm_with_om.panic()
         rm_with_om._order_manager.panic_flatten.assert_called_once()
 
-    def test_panic_without_order_manager(self, rm: RiskManager) -> None:
+    async def test_panic_without_order_manager(self, rm: RiskManager) -> None:
         # Should not raise even without order manager
-        rm.panic()
+        await rm.panic()
         assert rm._halted is True
 
-    def test_reset_clears_halted(self, rm: RiskManager) -> None:
-        rm.panic()
+    async def test_reset_clears_halted(self, rm: RiskManager) -> None:
+        await rm.panic()
         rm.reset()
         assert rm._halted is False

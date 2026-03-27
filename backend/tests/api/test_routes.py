@@ -25,7 +25,7 @@ def _make_deps() -> dict[str, Any]:
     strategy.update_config = MagicMock()
 
     risk_manager = MagicMock()
-    risk_manager.panic = MagicMock()
+    risk_manager.panic = AsyncMock()
     risk_manager.update_config = MagicMock()
     risk_manager.get_risk_status = MagicMock(return_value={
         "halted": False,

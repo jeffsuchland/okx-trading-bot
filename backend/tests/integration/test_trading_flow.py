@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -60,7 +60,7 @@ def _feed_overbought_data(strategy: MeanReversionStrategy) -> None:
 class TestSuccessfulTradeCycle:
     """Test: data -> signal -> risk OK -> order -> fill -> PnL updated."""
 
-    def test_successful_trade_cycle(self, tmp_path: Any) -> None:
+    async def test_successful_trade_cycle(self, tmp_path: Any) -> None:
         # Setup components
         client = _make_mock_client()
         order_manager = OrderManager(client)
@@ -89,7 +89,7 @@ class TestSuccessfulTradeCycle:
         assert approved, f"Risk check should pass: {reason}"
 
         # 4. Place order
-        result = order_manager.place_market_order("BTC-USDT", "buy", "0.001")
+        result = await order_manager.place_market_order("BTC-USDT", "buy", "0.001")
         assert result["order_id"] == "test-order-001"
 
         # 5. Record fill and update PnL
@@ -140,7 +140,7 @@ class TestRiskBlocksTrade:
 class TestStopLossTriggers:
     """Test: position drops below stop-loss -> market sell executed."""
 
-    def test_stop_loss_triggers(self) -> None:
+    async def test_stop_loss_triggers(self) -> None:
         client = _make_mock_client()
         order_manager = OrderManager(client)
         risk_manager = RiskManager({
@@ -165,7 +165,7 @@ class TestStopLossTriggers:
 
         # Execute the market sell for triggered position
         for pos in triggered:
-            result = order_manager.place_market_order(
+            result = await order_manager.place_market_order(
                 pos["symbol"], "sell", pos["size"]
             )
             assert result["order_id"] == "test-order-001"
@@ -197,15 +197,15 @@ class TestCircuitBreakerHalts:
 class TestPanicFlattens:
     """Test: panic triggered -> all orders canceled, positions sold."""
 
-    def test_panic_flattens(self) -> None:
+    async def test_panic_flattens(self) -> None:
         client = _make_mock_client()
         order_manager = OrderManager(client)
         risk_manager = RiskManager()
         risk_manager.set_order_manager(order_manager)
 
         # Place some orders first
-        order_manager.place_limit_order("BTC-USDT", "buy", "0.01", "40000")
-        order_manager.place_limit_order("ETH-USDT", "buy", "0.1", "3000")
+        await order_manager.place_limit_order("BTC-USDT", "buy", "0.01", "40000")
+        await order_manager.place_limit_order("ETH-USDT", "buy", "0.1", "3000")
         assert len(order_manager.get_open_orders()) == 2
 
         # Trigger panic with positions
@@ -214,7 +214,7 @@ class TestPanicFlattens:
             {"symbol": "ETH-USDT", "size": "0.1", "side": "long"},
         ]
 
-        risk_manager.panic()
+        await risk_manager.panic()
 
         # Verify halted
         approved, reason = risk_manager.pre_trade_check({"action": "BUY", "price": 100.0})
@@ -222,7 +222,7 @@ class TestPanicFlattens:
         assert "panic" in reason.lower()
 
         # Now flatten positions via order manager directly
-        result = order_manager.panic_flatten(positions)
+        result = await order_manager.panic_flatten(positions)
         assert result["positions_closed"] == 2
 
         # Verify market sell orders were placed for each position
