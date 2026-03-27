@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,6 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import create_app
+
+TEST_API_KEY = "test-secret-key"
+AUTH_HEADER = {"X-API-Key": TEST_API_KEY}
 
 
 def _make_deps() -> dict[str, Any]:
@@ -76,6 +80,14 @@ def client(deps: dict[str, Any]) -> TestClient:
 @pytest.fixture
 def empty_client() -> TestClient:
     app = create_app(dependencies={})
+    return TestClient(app)
+
+
+@pytest.fixture
+def authed_client(deps: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """Client fixture with API_SECRET_KEY set in the environment."""
+    monkeypatch.setenv("API_SECRET_KEY", TEST_API_KEY)
+    app = create_app(dependencies=deps)
     return TestClient(app)
 
 
@@ -263,6 +275,90 @@ class TestSchemaConformance:
         assert "risk" in data
         assert isinstance(data["strategy"], dict)
         assert isinstance(data["risk"], dict)
+
+
+class TestAuthentication:
+    """Test API key authentication on mutation endpoints."""
+
+    def test_mutation_rejected_without_key(self, authed_client: TestClient) -> None:
+        resp = authed_client.post("/api/panic")
+        assert resp.status_code == 401
+
+    def test_mutation_rejected_with_wrong_key(self, authed_client: TestClient) -> None:
+        resp = authed_client.post("/api/panic", headers={"X-API-Key": "wrong-key"})
+        assert resp.status_code == 401
+
+    def test_mutation_accepted_with_correct_header(self, authed_client: TestClient) -> None:
+        resp = authed_client.post("/api/panic", headers=AUTH_HEADER)
+        assert resp.status_code == 200
+
+    def test_mutation_accepted_via_query_param(self, authed_client: TestClient) -> None:
+        resp = authed_client.post(f"/api/panic?api_key={TEST_API_KEY}")
+        assert resp.status_code == 200
+
+    def test_get_endpoints_open_without_key(self, authed_client: TestClient) -> None:
+        for path in ("/api/status", "/api/balance", "/api/pnl", "/api/config"):
+            resp = authed_client.get(path)
+            assert resp.status_code == 200, f"Expected 200 for GET {path}"
+
+    def test_put_config_rejected_without_key(self, authed_client: TestClient) -> None:
+        resp = authed_client.put("/api/config", json={})
+        assert resp.status_code == 401
+
+    def test_put_config_accepted_with_correct_key(self, authed_client: TestClient) -> None:
+        resp = authed_client.put("/api/config", json={}, headers=AUTH_HEADER)
+        assert resp.status_code == 200
+
+    def test_no_auth_required_when_env_unset(self, client: TestClient) -> None:
+        """When API_SECRET_KEY is not set, all requests pass through."""
+        resp = client.post("/api/panic")
+        assert resp.status_code == 200
+
+
+class TestRiskConfigValidation:
+    """Test input validation on PUT /api/config risk fields."""
+
+    def test_negative_spend_per_trade_returns_422(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"spend_per_trade": -5}})
+        assert resp.status_code == 422
+
+    def test_negative_max_exposure_returns_422(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"max_exposure": -100}})
+        assert resp.status_code == 422
+
+    def test_negative_daily_loss_limit_returns_422(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"daily_loss_limit": -1}})
+        assert resp.status_code == 422
+
+    def test_stop_loss_above_100_returns_422(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"stop_loss_pct": 150}})
+        assert resp.status_code == 422
+
+    def test_stop_loss_negative_returns_422(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"stop_loss_pct": -1}})
+        assert resp.status_code == 422
+
+    def test_max_drawdown_above_100_returns_422(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"max_drawdown_pct": 101}})
+        assert resp.status_code == 422
+
+    def test_zero_values_are_accepted(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"spend_per_trade": 0, "stop_loss_pct": 0}})
+        assert resp.status_code == 200
+
+    def test_boundary_100_pct_is_accepted(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"stop_loss_pct": 100, "max_drawdown_pct": 100}})
+        assert resp.status_code == 200
+
+    def test_valid_risk_update_passes(self, client: TestClient) -> None:
+        resp = client.put("/api/config", json={"risk": {"spend_per_trade": 50, "stop_loss_pct": 2.5}})
+        assert resp.status_code == 200
+
+    def test_extra_risk_fields_are_forwarded(self, client: TestClient, deps: dict[str, Any]) -> None:
+        resp = client.put("/api/config", json={"risk": {"some_custom_field": "value"}})
+        assert resp.status_code == 200
+        call_args = deps["risk_manager"].update_config.call_args[0][0]
+        assert call_args.get("some_custom_field") == "value"
 
 
 class TestCORS:
