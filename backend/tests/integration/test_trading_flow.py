@@ -18,7 +18,14 @@ from src.strategies.mean_reversion import MeanReversionStrategy
 def _make_mock_client(order_id: str = "test-order-001") -> MagicMock:
     """Create a mock OkxClient that returns deterministic responses."""
     client = MagicMock()
-    client.place_order.return_value = {"order_id": order_id, "sCode": "0", "sMsg": ""}
+    _order_counter = [0]
+
+    def _place_order_side_effect(**kwargs: Any) -> dict[str, Any]:
+        _order_counter[0] += 1
+        oid = f"{order_id}-{_order_counter[0]}"
+        return {"order_id": oid, "sCode": "0", "sMsg": ""}
+
+    client.place_order.side_effect = _place_order_side_effect
     client.cancel_order.return_value = {"ordId": order_id, "sCode": "0", "sMsg": ""}
     client.get_positions.return_value = []
     return client
@@ -27,17 +34,16 @@ def _make_mock_client(order_id: str = "test-order-001") -> MagicMock:
 def _feed_oversold_data(strategy: MeanReversionStrategy) -> None:
     """Feed enough candle data to produce a BUY signal (RSI oversold + MACD cross up).
 
-    We simulate a price series that drops sharply then ticks up slightly,
-    creating RSI < 30 and a MACD histogram zero-line cross-up.
+    We simulate a price series that drops sharply then jumps up decisively,
+    creating RSI < 30 and a MACD histogram zero-line cross-up in a single step.
     """
-    # Start high, decline sharply to drive RSI down
-    prices = [100.0] * 10
-    for i in range(30):
-        prices.append(100.0 - i * 1.5)  # decline from 100 to ~55
-    # Small uptick to trigger MACD histogram crossover
-    prices.append(56.0)
-    prices.append(57.0)
-    prices.append(58.0)
+    # Start high, decline steeply to drive RSI to ~0 and MACD histogram near 0
+    prices = [200.0] * 10
+    for i in range(65):
+        prices.append(200.0 - i * 2.0)  # decline from 200 to 72
+    # One decisive uptick: MACD histogram crosses from negative to positive
+    # while RSI is still well below 30 (~21.8)
+    prices.append(79.2)
 
     for p in prices:
         strategy.analyze({"close": p})
@@ -90,7 +96,7 @@ class TestSuccessfulTradeCycle:
 
         # 4. Place order
         result = order_manager.place_market_order("BTC-USDT", "buy", "0.001")
-        assert result["order_id"] == "test-order-001"
+        assert result["order_id"].startswith("test-order-001")
 
         # 5. Record fill and update PnL
         trade_info = {
@@ -168,7 +174,7 @@ class TestStopLossTriggers:
             result = order_manager.place_market_order(
                 pos["symbol"], "sell", pos["size"]
             )
-            assert result["order_id"] == "test-order-001"
+            assert result["order_id"].startswith("test-order-001")
 
         # Verify the order was placed
         client.place_order.assert_called()

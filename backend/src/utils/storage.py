@@ -42,7 +42,7 @@ class JsonStorage:
             )
             try:
                 with os.fdopen(fd, "w") as f:
-                    json.dump(data, f, indent=2, default=str)
+                    json.dump(data, f, indent=2)
                 # Atomic rename (on same filesystem)
                 shutil.move(tmp_path, filepath)
                 logger.debug("Saved %s", filepath)
