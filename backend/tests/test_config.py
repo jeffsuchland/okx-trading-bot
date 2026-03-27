@@ -87,7 +87,14 @@ class TestMissingRequired:
 class TestDefaults:
     """Verify default values for optional vars."""
 
-    def test_defaults_when_not_set(self, tmp_path: Any) -> None:
+    def test_defaults_when_not_set(self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Clear any env vars that may have been set by previous tests loading _VALID_ENV
+        for var in [
+            "SPEND_PER_TRADE", "MAX_EXPOSURE", "STOP_LOSS_PCT", "MAX_DRAWDOWN_PCT",
+            "DAILY_LOSS_LIMIT", "TRADING_PAIR", "STRATEGY_NAME", "SERVER_HOST",
+            "SERVER_PORT", "TICK_INTERVAL", "OKX_SANDBOX", "DEMO_MODE",
+        ]:
+            monkeypatch.delenv(var, raising=False)
         env_content = "OKX_API_KEY=k\nOKX_SECRET_KEY=s\nOKX_PASSPHRASE=p\n"
         env_path = _write_env(str(tmp_path), env_content)
         cfg = Config(env_path=env_path)

@@ -36,7 +36,7 @@ class TestBuildComponents:
         from main import build_components
 
         mock_strategy_cls = MagicMock()
-        mock_registry.get.return_value = mock_strategy_cls
+        mock_registry.return_value.get.return_value = mock_strategy_cls
 
         config = MagicMock()
         config.demo_mode = False
@@ -68,7 +68,7 @@ class TestBuildComponents:
         # Verify dependency order: client created before order_manager
         mock_client.assert_called_once()
         mock_ws.assert_called_once()
-        mock_registry.get.assert_called_once_with("MeanReversionStrategy")
+        mock_registry.return_value.get.assert_called_once_with("MeanReversionStrategy")
         mock_strategy_cls.assert_called_once()
 
 
