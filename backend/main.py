@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import signal
 import sys
+from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
@@ -138,7 +138,7 @@ def build_components(config: Config) -> dict[str, Any]:
 
 
 async def shutdown(components: dict[str, Any]) -> None:
-    """Graceful shutdown: stop trading loop, close WebSocket, log shutdown."""
+    """Graceful shutdown: stop trading loop, close WebSocket, cancel tasks, log shutdown."""
     logger.info("Shutting down gracefully...")
 
     trading_loop = components.get("trading_loop")
@@ -154,15 +154,46 @@ async def shutdown(components: dict[str, Any]) -> None:
         except Exception:
             logger.warning("Balance sync stop failed")
 
+    order_manager = components.get("order_manager")
+    if order_manager and hasattr(order_manager, "cancel_all_orders"):
+        try:
+            order_manager.cancel_all_orders()
+            logger.info("Open orders cancelled")
+        except Exception:
+            logger.warning("Order cancellation failed during shutdown")
+
     ws_stream = components.get("ws_stream")
-    if ws_stream:
+    if ws_stream and hasattr(ws_stream, "close"):
         try:
             await ws_stream.close()
             logger.info("WebSocket closed")
         except Exception:
             logger.warning("WebSocket close failed (may already be closed)")
 
+    # Cancel any remaining background tasks (excluding the current task)
+    current = asyncio.current_task()
+    tasks = [t for t in asyncio.all_tasks() if t is not current]
+    if tasks:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info("Cancelled %d background task(s)", len(tasks))
+
     logger.info("=== OKX Trading Bot Stopped ===")
+
+
+def make_lifespan(components: dict[str, Any]):
+    """Return a lifespan context manager that owns startup and shutdown."""
+
+    @asynccontextmanager
+    async def lifespan(app: Any):
+        # Startup: nothing extra needed — components are already built
+        logger.info("=== OKX Trading Bot Ready ===")
+        yield
+        # Shutdown: runs inside the running uvicorn event loop
+        await shutdown(components)
+
+    return lifespan
 
 
 def main() -> None:
@@ -178,21 +209,9 @@ def main() -> None:
     log_config_summary(config)
 
     components = build_components(config)
-    app = create_app(dependencies=components)
+    app = create_app(dependencies=components, lifespan=make_lifespan(components))
 
     server_config = config.get_server_config()
-
-    # Register shutdown handler
-    loop = asyncio.new_event_loop()
-
-    def _signal_handler(sig: int, frame: Any) -> None:
-        logger.info("Received signal %s, initiating shutdown...", sig)
-        loop.run_until_complete(shutdown(components))
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, _signal_handler)
-    if hasattr(signal, "SIGTERM"):
-        signal.signal(signal.SIGTERM, _signal_handler)
 
     uvicorn.run(
         app,
