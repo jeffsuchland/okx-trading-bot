@@ -25,7 +25,7 @@ def _make_deps() -> dict[str, Any]:
     strategy.update_config = MagicMock()
 
     risk_manager = MagicMock()
-    risk_manager.panic = MagicMock()
+    risk_manager.panic = AsyncMock()
     risk_manager.update_config = MagicMock()
     risk_manager.get_risk_status = MagicMock(return_value={
         "halted": False,
@@ -36,6 +36,8 @@ def _make_deps() -> dict[str, Any]:
     })
 
     balance_sync = MagicMock()
+    balance_sync.get_usdt_balance = MagicMock(return_value=1000.0)
+    balance_sync.get_total_equity = MagicMock(return_value=1500.0)
     balance_sync.get_balances = MagicMock(return_value=[
         {"ccy": "USDT", "availBal": "1000.0", "eq": "1500.0"},
     ])

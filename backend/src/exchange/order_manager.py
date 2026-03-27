@@ -42,7 +42,7 @@ class OrderManager:
                 time.sleep(sleep_time)
         self._request_timestamps.append(time.monotonic())
 
-    def place_limit_order(
+    async def place_limit_order(
         self,
         symbol: str,
         side: str,
@@ -73,7 +73,7 @@ class OrderManager:
         logger.info("Placed limit order %s: %s %s %s @ %s", order_id, side, qty, symbol, price)
         return result
 
-    def place_market_order(
+    async def place_market_order(
         self,
         symbol: str,
         side: str,
@@ -92,7 +92,7 @@ class OrderManager:
         logger.info("Placed market order: %s %s %s", side, qty, symbol)
         return result
 
-    def cancel_order(self, symbol: str, order_id: str) -> dict[str, Any]:
+    async def cancel_order(self, symbol: str, order_id: str) -> dict[str, Any]:
         """Cancel a specific order and remove from tracking."""
         self._throttle()
         result = self._client.cancel_order(symbol=symbol, order_id=order_id)
@@ -104,12 +104,12 @@ class OrderManager:
         """Return list of currently tracked open orders."""
         return list(self._open_orders.values())
 
-    def cancel_all_orders(self) -> list[dict[str, Any]]:
+    async def cancel_all_orders(self) -> list[dict[str, Any]]:
         """Cancel all tracked open orders."""
         results = []
         for order_id, order in list(self._open_orders.items()):
             try:
-                result = self.cancel_order(order["symbol"], order_id)
+                result = await self.cancel_order(order["symbol"], order_id)
                 results.append(result)
             except Exception as e:
                 logger.error("Failed to cancel order %s: %s", order_id, e)
@@ -117,14 +117,14 @@ class OrderManager:
         logger.info("Cancelled all open orders (%d)", len(results))
         return results
 
-    def panic_flatten(self, positions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    async def panic_flatten(self, positions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         """Cancel all orders and market-sell all non-USDT positions.
 
         Args:
             positions: List of position dicts with keys: symbol, size, side.
                        If None, only cancels orders.
         """
-        cancel_results = self.cancel_all_orders()
+        cancel_results = await self.cancel_all_orders()
 
         sell_results = []
         if positions:
@@ -135,7 +135,7 @@ class OrderManager:
                 pos_side = pos.get("side", "long")
                 close_side = "sell" if pos_side == "long" else "buy"
                 try:
-                    result = self.place_market_order(
+                    result = await self.place_market_order(
                         symbol=symbol,
                         side=close_side,
                         qty=size,

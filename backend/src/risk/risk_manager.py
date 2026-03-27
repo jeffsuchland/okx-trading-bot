@@ -124,11 +124,11 @@ class RiskManager:
             )
         logger.info("Risk config updated: %s", list(new_config.keys()))
 
-    def panic(self) -> None:
+    async def panic(self) -> None:
         """Enter panic mode: flatten all positions and halt risk components."""
         self._halted = True
         if self._order_manager is not None:
-            self._order_manager.panic_flatten()
+            await self._order_manager.panic_flatten()
         logger.warning("PANIC MODE ACTIVATED — all trading halted")
 
     def reset(self) -> None:

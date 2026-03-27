@@ -39,6 +39,7 @@ class TestBuildComponents:
         mock_registry.get.return_value = mock_strategy_cls
 
         config = MagicMock()
+        config.demo_mode = False
         config.get_okx_credentials.return_value = {
             "api_key": "k", "secret_key": "s", "passphrase": "p", "sandbox": "true"
         }
@@ -49,6 +50,8 @@ class TestBuildComponents:
             "stop_loss_pct": 2, "max_drawdown_pct": 5, "max_daily_loss": 50,
         }
         config.tick_interval = 5.0
+        config.trading_pair = "BTC-USDT"
+        config.spend_per_trade = 10.0
 
         components = build_components(config)
 

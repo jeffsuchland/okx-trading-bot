@@ -492,6 +492,34 @@ This file tracks all implementation cycles, decisions, and learnings during deve
 
 ---
 
+## [Cycle 30] Wire full data pipeline — H2/H3/H4/H5 fixes
+
+* **Status:** Complete
+* **Started:** 2026-03-27
+* **What was fixed:**
+  - H2: WsStream now started + subscribed in `/api/start` (connect, subscribe tickers for trading pair)
+  - H3: BalanceSync.start() now called in `/api/start`; stop() called in `/api/stop`
+  - H4: TradingLoop._tick() now calls `_execute_signal()` which places real orders via OrderManager (BUY/SELL market orders, GRID limit orders)
+  - H5: PnlTracker.record_trade() is now called after each order is placed
+  - WsStream.queue is now directly connected to TradingLoop's market_data_queue in `build_components()`
+  - OrderManager methods converted to `async` (place_limit_order, place_market_order, cancel_order, cancel_all_orders, panic_flatten)
+  - RiskManager.panic() converted to `async`
+  - All callers updated to `await` the async methods
+  - Error handling added inside `_tick()` so individual signal errors don't crash the loop
+* **Files changed:**
+  - `backend/main.py` — queue wiring, pnl_tracker/trading_pair/spend_per_trade passed to TradingLoop, balance_sync stop in shutdown, WsStream URL for sandbox
+  - `backend/src/exchange/order_manager.py` — all mutation methods made async
+  - `backend/src/risk/risk_manager.py` — panic() made async
+  - `backend/src/engine/trading_loop.py` — added _execute_signal(), pnl_tracker param, error handling in _tick()
+  - `backend/src/api/routes.py` — /api/start wires WsStream+BalanceSync; /api/panic awaits; /api/stop stops balance_sync
+  - `backend/tests/exchange/test_order_manager.py` — all tests converted to async
+  - `backend/tests/risk/test_risk_manager.py` — panic tests converted to async
+  - `backend/tests/integration/test_trading_flow.py` — order calls converted to async
+  - `backend/tests/api/test_routes.py` — risk_manager.panic made AsyncMock; balance_sync mocks fixed
+  - `backend/tests/test_main.py` — added config.demo_mode=False, trading_pair, spend_per_trade
+
+---
+
 ## [Cycle 29] Data persistence layer
 
 * **Status:** In Progress

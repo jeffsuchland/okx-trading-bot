@@ -65,6 +65,7 @@ def build_components(config: Config) -> dict[str, Any]:
         # Demo mode: use mocked exchange client
         okx_client = _build_demo_client()
         ws_stream = MagicMock()
+        ws_stream.queue = asyncio.Queue()
     else:
         # 1. Exchange client
         creds = config.get_okx_credentials()
@@ -75,7 +76,12 @@ def build_components(config: Config) -> dict[str, Any]:
             sandbox=config.okx_sandbox,
         )
         # 2. WebSocket stream
-        ws_stream = WsStream(sandbox=config.okx_sandbox)
+        ws_url = (
+            "wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999"
+            if config.okx_sandbox
+            else "wss://ws.okx.com:8443/ws/v5/public"
+        )
+        ws_stream = WsStream(url=ws_url)
 
     # 3. Order manager (depends on client)
     order_manager = OrderManager(okx_client)
@@ -103,16 +109,22 @@ def build_components(config: Config) -> dict[str, Any]:
     # 7. PnL tracker
     pnl_tracker = PnlTracker()
 
-    # 8. Market data queue + Trading loop (depends on strategy, order_manager)
-    market_data_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    # 8. Market data queue shared between WsStream and TradingLoop
+    market_data_queue: asyncio.Queue[dict[str, Any]] = ws_stream.queue
+
+    # 9. Trading loop (depends on strategy, order_manager, pnl_tracker)
     trading_loop = TradingLoop(
         strategy=strategy,
         order_manager=order_manager,
         market_data_queue=market_data_queue,
         tick_interval_seconds=config.tick_interval,
+        trading_pair=config.trading_pair,
+        spend_per_trade=config.spend_per_trade,
+        pnl_tracker=pnl_tracker,
     )
 
     return {
+        "config": config,
         "okx_client": okx_client,
         "ws_stream": ws_stream,
         "order_manager": order_manager,
@@ -133,6 +145,14 @@ async def shutdown(components: dict[str, Any]) -> None:
     if trading_loop and trading_loop.is_running:
         await trading_loop.stop()
         logger.info("Trading loop stopped")
+
+    balance_sync = components.get("balance_sync")
+    if balance_sync and hasattr(balance_sync, "stop"):
+        try:
+            await balance_sync.stop()
+            logger.info("Balance sync stopped")
+        except Exception:
+            logger.warning("Balance sync stop failed")
 
     ws_stream = components.get("ws_stream")
     if ws_stream:
