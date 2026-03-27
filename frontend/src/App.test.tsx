@@ -42,12 +42,12 @@ describe('App Layout', () => {
 
   it('shows USDT balance', () => {
     renderWithRouter()
-    expect(screen.getByTestId('usdt-balance').textContent).toBe('1234.56')
+    expect(screen.getByTestId('usdt-balance').textContent).toBe('$1,234.56')
   })
 
   it('shows status label', () => {
     renderWithRouter()
-    expect(screen.getByTestId('status-label').textContent).toBe('Running')
+    expect(screen.getByTestId('status-label').textContent).toBe('Bot Running')
   })
 
   it('renders main content area', () => {

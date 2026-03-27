@@ -44,12 +44,21 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       const dropdown = screen.getByTestId('strategy-dropdown')
       expect(dropdown).toBeDefined()
-      expect(dropdown.querySelectorAll('option').length).toBe(2)
+      // Strategies are rendered as clickable cards, not <option> elements
+      const strategyButtons = screen.getAllByRole('button').filter(
+        (btn) => btn.textContent?.includes('Buy the Dip') || btn.textContent?.includes('Grid Trading')
+      )
+      expect(strategyButtons.length).toBe(2)
     })
   })
 
   it('pre-populates config values from GET /api/config', async () => {
     renderSettings()
+    // Open the advanced section to reveal strategy params
+    await waitFor(() => {
+      expect(screen.getByText(/Advanced: Fine-tune strategy parameters/)).toBeDefined()
+    })
+    fireEvent.click(screen.getByText(/Advanced: Fine-tune strategy parameters/))
     await waitFor(() => {
       const input = screen.getByTestId('input-rsi_period') as HTMLInputElement
       expect(input.value).toBe('14')
@@ -58,14 +67,22 @@ describe('SettingsPage', () => {
 
   it('renders strategy params dynamically based on selected strategy', async () => {
     renderSettings()
+    // Open the advanced section to reveal strategy params
+    await waitFor(() => {
+      expect(screen.getByText(/Advanced: Fine-tune strategy parameters/)).toBeDefined()
+    })
+    fireEvent.click(screen.getByText(/Advanced: Fine-tune strategy parameters/))
+
     await waitFor(() => {
       expect(screen.getByTestId('strategy-params')).toBeDefined()
       expect(screen.getByTestId('input-rsi_period')).toBeDefined()
     })
 
-    // Switch to GridTradingStrategy
-    const dropdown = screen.getByTestId('strategy-dropdown')
-    fireEvent.change(dropdown, { target: { value: 'GridTradingStrategy' } })
+    // Switch to GridTradingStrategy via the hidden input's associated card button
+    const gridButton = screen.getAllByRole('button').find(
+      (btn) => btn.textContent?.includes('Grid Trading')
+    )!
+    fireEvent.click(gridButton)
 
     await waitFor(() => {
       expect(screen.getByTestId('input-num_levels')).toBeDefined()
